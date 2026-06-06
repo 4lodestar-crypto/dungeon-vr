@@ -1,0 +1,44 @@
+# Unity generated
+/[Ll]ibrary/
+/[Tt]emp/
+/[Oo]bj/
+/[Bb]uild/
+/[Bb]uilds/
+/[Ll]ogs/
+/[Mm]emoryCaptures/
+
+# Unity cache
+[Ll]ibrary/PackageCache/
+[Ll]ibrary/ScriptAssemblies/
+[Ll]ibrary/ShaderCache/
+
+# Asset import cache
+/[Aa]ssets/AssetStoreTools*
+
+# Visual Studio / Rider / VS Code
+/[Cc]sproj/
+/.vs/
+/*.csproj
+/*.sln
+/*.suo
+/*.user
+/*.userprefs
+*.swp
+*.swo
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Git LFS pointer files (track large binaries with `git lfs track`)
+*.fbx
+*.png
+*.jpg
+*.jpeg
+*.tga
+*.psd
+*.wav
+*.mp3
+*.ogg
