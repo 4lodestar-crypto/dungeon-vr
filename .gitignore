@@ -1,44 +1,55 @@
+# =============
 # Unity generated
-/[Ll]ibrary/
-/[Tt]emp/
-/[Oo]bj/
-/[Bb]uild/
-/[Bb]uilds/
-/[Ll]ogs/
-/[Mm]emoryCaptures/
+# =============
+[Ll]ibrary/
+[Tt]emp/
+[Oo]bj/
+[Bb]uild/
+[Bb]uilds/
+[Ll]ogs/
+[Mm]emoryCaptures/
+[Uu]serSettings/
 
-# Unity cache
-[Ll]ibrary/PackageCache/
-[Ll]ibrary/ScriptAssemblies/
-[Ll]ibrary/ShaderCache/
-
-# Asset import cache
-/[Aa]ssets/AssetStoreTools*
-
-# Visual Studio / Rider / VS Code
-/[Cc]sproj/
-/.vs/
-/*.csproj
-/*.sln
-/*.suo
-/*.user
-/*.userprefs
+# =============
+# Visual Studio / IDE
+# =============
+*.csproj
+*.unityproject
+*.sln
+*.suo
+*.tmp
+*.user
+*.userprefs
+*.pidb
+*.booproj
+*.svd
+*.pdb
+*.mdb
+.vs/
+.idea/
 *.swp
 *.swo
-.vscode/
-.idea/
+*~
 
+# =============
 # OS files
+# =============
 .DS_Store
 Thumbs.db
+Desktop.ini
 
-# Git LFS pointer files (track large binaries with `git lfs track`)
-*.fbx
-*.png
-*.jpg
-*.jpeg
-*.tga
-*.psd
-*.wav
-*.mp3
-*.ogg
+# =============
+# Test coverage
+# =============
+Assets/Tests/Coverage/
+Assets/Tests/PlayMode/Performance/Reports/
+
+# =============
+# Large binary logs
+# =============
+*.log
+
+# =============
+# Git LFS pointer backup
+# =============
+*.lfs
