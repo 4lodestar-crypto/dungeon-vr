@@ -33,6 +33,27 @@ namespace DungeonVR.Gameplay.Components
         }
 
         /// <summary>
+        /// Load grid data from a procedurally generated dungeon layout.
+        /// Deep-copies the Walls array so the caller can discard its original.
+        /// </summary>
+        public void LoadFromDungeonData(DungeonVR.Gameplay.Level.DungeonData data)
+        {
+            _width = data.Width;
+            _height = data.Height;
+
+            _walls = new bool[_width, _height];
+            for (int x = 0; x < _width; x++)
+            {
+                for (int y = 0; y < _height; y++)
+                {
+                    _walls[x, y] = data.Walls[x, y];
+                }
+            }
+
+            Debug.Log($"GridData loaded dungeon: {_width}x{_height}");
+        }
+
+        /// <summary>
         /// Generates a grid with walls on all four edges and walkable interior.
         /// </summary>
         public void GeneratePerimeterWalledGrid()
