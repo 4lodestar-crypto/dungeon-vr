@@ -30,11 +30,12 @@ jobs:
 
       - name: Verify .gitignore covers Unity files
         run: |
-          for pattern in "Library/" "Temp/" "Obj/" "Build/"; do
-            if grep -q "^${pattern}" .gitignore; then
-              echo "PASS: .gitignore covers ${pattern}"
+          for pattern in "Library" "Temp" "Obj" "Build"; do
+            # Normalize bracket patterns [Ll] -> L, then grep case-insensitively
+            if sed -E 's/\[([[:alpha:]])[[:alpha:]]\]/\1/g' .gitignore | grep -qiE "^/?${pattern}/"; then
+              echo "PASS: .gitignore covers ${pattern}/"
             else
-              echo "FAIL: .gitignore missing ${pattern}"
+              echo "FAIL: .gitignore missing ${pattern}/"
               exit 1
             fi
           done
