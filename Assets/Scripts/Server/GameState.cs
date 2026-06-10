@@ -11,7 +11,7 @@ namespace DungeonVR.Server
     public class GameState
     {
         /// <summary>The champion's current state (position, facing).</summary>
-        public ChampionState Champion { get; }
+        public ChampionState Champion { get; set; }
 
         /// <summary>
         /// Seeded RNG for deterministic debug and replay.

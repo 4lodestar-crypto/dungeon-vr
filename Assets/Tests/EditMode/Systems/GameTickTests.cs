@@ -55,9 +55,11 @@ namespace DungeonVR.Tests.EditMode
             var grid = new bool[6, 6];
             var champion = new ChampionState(new Vector2Int(2, 2), FacingDirection.North);
 
-            // Act — simulate 3 sequential FixedUpdate ticks
+            // Act — simulate 3 sequential FixedUpdate ticks, adopting state after each
             var r1 = MovementHandler.Handle(new MovementRequest(new Vector2Int(0, 1), tickNumber: 1), champion, grid);
+            champion = r1.NewState;
             var r2 = MovementHandler.Handle(new MovementRequest(new Vector2Int(0, 1), tickNumber: 2), champion, grid);
+            champion = r2.NewState;
             var r3 = MovementHandler.Handle(new MovementRequest(new Vector2Int(0, 1), tickNumber: 3), champion, grid);
 
             // Assert
@@ -65,7 +67,7 @@ namespace DungeonVR.Tests.EditMode
             Assert.IsTrue(r2.Success, "Second tick move should succeed");
             Assert.IsTrue(r3.Success, "Third tick move should succeed");
             Assert.AreEqual(new Vector2Int(2, 5), champion.GridPosition,
-                "After 3 northward ticks from (2,2), champion should be at (2,5)");
+                "After 3 northward ticks from (2,2) adopting state each tick, champion should be at (2,5)");
         }
 
         [Test]
@@ -79,14 +81,15 @@ namespace DungeonVR.Tests.EditMode
             // Act — enqueue and process (mimics GameTick.ProcessTick inner loop)
             var request = new MovementRequest(new Vector2Int(0, 1), tickNumber: 1);
             results.Add(MovementHandler.Handle(request, champion, grid));
+            champion = results[0].NewState; // adopt state like GameTick does
 
             // Assert
             Assert.AreEqual(1, results.Count);
             Assert.IsTrue(results[0].Success);
             Assert.AreEqual(new Vector2Int(2, 3), champion.GridPosition,
-                "Champion advanced one tile north");
-            Assert.AreEqual(new Vector2Int(2, 3), results[0].NewPosition,
-                "Result position matches champion position");
+                "Champion advanced one tile north after adopting returned state");
+            Assert.AreEqual(new Vector2Int(2, 3), results[0].NewState.GridPosition,
+                "Result state grid position matches champion position");
         }
 
         [Test]
@@ -108,6 +111,8 @@ namespace DungeonVR.Tests.EditMode
             Assert.IsFalse(result.Success, "Invalid move should be rejected");
             Assert.AreEqual(new Vector2Int(2, 4), champion.GridPosition,
                 "Champion position unchanged after invalid move");
+            Assert.AreEqual(new Vector2Int(2, 4), result.NewState.GridPosition,
+                "Result state should match original on failure");
             Assert.IsNotEmpty(result.BlockReason, "Block reason should be provided");
         }
     }

@@ -32,8 +32,10 @@ namespace DungeonVR.Tests.EditMode.Integration
 
             // Assert
             Assert.IsTrue(result.Success, "Forward move on empty grid should succeed");
-            Assert.AreEqual(new Vector2Int(2, 3), champion.GridPosition, "Champion should advance 1 tile north");
-            Assert.AreEqual(new Vector2Int(2, 3), result.NewPosition, "Result position should match champion position");
+            Assert.AreEqual(new Vector2Int(2, 3), result.NewState.GridPosition,
+                "Result state should reflect the new position");
+            Assert.AreEqual(new Vector2Int(2, 2), champion.GridPosition,
+                "Original champion must NOT be mutated (immutability pattern)");
         }
 
         [Test]
@@ -51,6 +53,8 @@ namespace DungeonVR.Tests.EditMode.Integration
             // Assert
             Assert.IsFalse(result.Success, "Move into wall tile should be rejected");
             Assert.AreEqual(new Vector2Int(2, 4), champion.GridPosition, "Champion position should not change");
+            Assert.AreEqual(new Vector2Int(2, 4), result.NewState.GridPosition,
+                "Result state should match original on failure");
             Assert.IsNotEmpty(result.BlockReason, "Block reason should be provided");
         }
 
@@ -61,14 +65,17 @@ namespace DungeonVR.Tests.EditMode.Integration
             bool[,] grid = TestGridBuilder.Create5x5Empty(); // all walkable
             var champion = TestGridBuilder.CreateChampionAt(new Vector2Int(0, 0), FacingDirection.East);
 
-            // Act — enqueue 3 forward moves, process each like a tick
-            MovementHandler.Handle(new MovementRequest(new Vector2Int(1, 0), tickNumber: 1), champion, grid);
-            MovementHandler.Handle(new MovementRequest(new Vector2Int(1, 0), tickNumber: 2), champion, grid);
+            // Act — enqueue 3 forward moves, adopt returned state after each like a real tick
+            MovementResult r1 = MovementHandler.Handle(new MovementRequest(new Vector2Int(1, 0), tickNumber: 1), champion, grid);
+            champion = r1.NewState;
+            MovementResult r2 = MovementHandler.Handle(new MovementRequest(new Vector2Int(1, 0), tickNumber: 2), champion, grid);
+            champion = r2.NewState;
             MovementResult result3 = MovementHandler.Handle(new MovementRequest(new Vector2Int(1, 0), tickNumber: 3), champion, grid);
 
             // Assert
             Assert.IsTrue(result3.Success, "Third move should succeed");
-            Assert.AreEqual(new Vector2Int(3, 0), champion.GridPosition, "After 3 east moves from (0,0), champion at (3,0)");
+            Assert.AreEqual(new Vector2Int(3, 0), champion.GridPosition,
+                "After 3 east moves adopting state each tick, champion at (3,0)");
         }
 
         [Test]
@@ -78,17 +85,20 @@ namespace DungeonVR.Tests.EditMode.Integration
             bool[,] grid = TestGridBuilder.Create5x5Empty();
             var champion = TestGridBuilder.CreateDefaultChampion(); // (2,2) North
 
-            // Act — rotate left (now facing West), then move forward
+            // Act — rotate left (now facing West), then move forward, adopting state each time
             var rotateReq = new MovementRequest(Vector2Int.zero, tickNumber: 1, FacingDirection.West);
-            MovementHandler.Handle(rotateReq, champion, grid);
+            MovementResult rotateResult = MovementHandler.Handle(rotateReq, champion, grid);
+            champion = rotateResult.NewState;
 
             var moveReq = new MovementRequest(new Vector2Int(-1, 0), tickNumber: 2);
             MovementResult moveResult = MovementHandler.Handle(moveReq, champion, grid);
 
             // Assert
-            Assert.AreEqual(FacingDirection.West, champion.FacingDirection, "After rotate left from North, facing West");
+            Assert.AreEqual(FacingDirection.West, champion.FacingDirection,
+                "After rotate left from North, facing West");
             Assert.IsTrue(moveResult.Success, "West move after rotation should succeed");
-            Assert.AreEqual(new Vector2Int(1, 2), champion.GridPosition, "Champion moved 1 tile west");
+            Assert.AreEqual(new Vector2Int(1, 2), champion.GridPosition,
+                "Champion moved 1 tile west");
         }
 
         [Test]

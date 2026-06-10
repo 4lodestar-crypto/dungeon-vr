@@ -43,8 +43,9 @@ namespace DungeonVR.Tests.EditMode
 
             // Assert
             Assert.IsTrue(result.Success, "Move forward from open tile should succeed");
-            Assert.AreEqual(new Vector2Int(2, 3), result.NewPosition);
-            Assert.AreEqual(new Vector2Int(2, 3), champion.GridPosition);
+            Assert.AreEqual(new Vector2Int(2, 3), result.NewState.GridPosition);
+            Assert.AreEqual(new Vector2Int(2, 2), champion.GridPosition,
+                "Original champion state must NOT be mutated (immutability pattern)");
         }
 
         [Test]
@@ -60,8 +61,8 @@ namespace DungeonVR.Tests.EditMode
 
             // Assert
             Assert.IsFalse(result.Success, "Move into wall should be blocked");
-            Assert.AreEqual(new Vector2Int(2, 4), result.NewPosition, "Position should remain unchanged");
             Assert.AreEqual(new Vector2Int(2, 4), champion.GridPosition, "Champion state should remain unchanged");
+            Assert.AreEqual(new Vector2Int(2, 4), result.NewState.GridPosition, "Result state should match original");
             Assert.IsNotEmpty(result.BlockReason, "Block reason should be provided");
         }
 
@@ -78,9 +79,11 @@ namespace DungeonVR.Tests.EditMode
 
             // Assert
             Assert.IsTrue(result.Success, "Rotate should succeed");
-            Assert.AreEqual(FacingDirection.West, result.NewFacing);
-            Assert.AreEqual(FacingDirection.West, champion.FacingDirection);
-            Assert.AreEqual(new Vector2Int(2, 2), champion.GridPosition, "Position unchanged on rotate");
+            Assert.AreEqual(FacingDirection.West, result.NewState.FacingDirection);
+            Assert.AreEqual(FacingDirection.North, champion.FacingDirection,
+                "Original champion facing must NOT be mutated (immutability pattern)");
+            Assert.AreEqual(new Vector2Int(2, 2), result.NewState.GridPosition, "Position unchanged on rotate");
+            Assert.AreEqual(new Vector2Int(2, 2), champion.GridPosition, "Original position unchanged");
         }
 
         [Test]
@@ -96,9 +99,11 @@ namespace DungeonVR.Tests.EditMode
 
             // Assert
             Assert.IsTrue(result.Success, "Rotate should succeed");
-            Assert.AreEqual(FacingDirection.East, result.NewFacing);
-            Assert.AreEqual(FacingDirection.East, champion.FacingDirection);
-            Assert.AreEqual(new Vector2Int(2, 2), champion.GridPosition, "Position unchanged on rotate");
+            Assert.AreEqual(FacingDirection.East, result.NewState.FacingDirection);
+            Assert.AreEqual(FacingDirection.North, champion.FacingDirection,
+                "Original champion facing must NOT be mutated (immutability pattern)");
+            Assert.AreEqual(new Vector2Int(2, 2), result.NewState.GridPosition, "Position unchanged on rotate");
+            Assert.AreEqual(new Vector2Int(2, 2), champion.GridPosition, "Original position unchanged");
         }
 
         [Test]
@@ -108,16 +113,18 @@ namespace DungeonVR.Tests.EditMode
             var champion = new ChampionState(new Vector2Int(2, 2), FacingDirection.North);
             var grid = CreateEmpty5x5();
 
-            // Act — process two forward moves
+            // Act — process two forward moves, adopting returned state each time
             var req1 = new MovementRequest(new Vector2Int(0, 1), tickNumber: 1);
-            MovementHandler.Handle(req1, champion, grid);
+            MovementResult result1 = MovementHandler.Handle(req1, champion, grid);
+            champion = result1.NewState; // adopt cloned state
 
             var req2 = new MovementRequest(new Vector2Int(0, 1), tickNumber: 2);
             MovementResult result2 = MovementHandler.Handle(req2, champion, grid);
 
             // Assert
             Assert.IsTrue(result2.Success);
-            Assert.AreEqual(new Vector2Int(2, 4), champion.GridPosition, "After two forward moves from (2,2), champion should be at (2,4)");
+            Assert.AreEqual(new Vector2Int(2, 4), champion.GridPosition,
+                "After adopting result1, champion should be at (2,3); after result2 at (2,4)");
         }
 
         [Test]
@@ -134,6 +141,8 @@ namespace DungeonVR.Tests.EditMode
             // Assert
             Assert.IsFalse(result.Success, "Move off-grid edge should be blocked");
             Assert.AreEqual(new Vector2Int(0, 2), champion.GridPosition, "Position unchanged");
+            Assert.AreEqual(new Vector2Int(0, 2), result.NewState.GridPosition,
+                "Result state should match original on failure");
             Assert.IsNotEmpty(result.BlockReason, "Block reason should mention bounds");
         }
     }
