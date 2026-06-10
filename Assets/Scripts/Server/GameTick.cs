@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using DungeonVR.Gameplay;
 using DungeonVR.Gameplay.Components;
 using DungeonVR.Gameplay.Logic;
+
 using DungeonVR.Shared;
 using DungeonVR.Shared.Requests;
 using DungeonVR.Shared.Results;
@@ -41,6 +42,9 @@ namespace DungeonVR.Server
         /// <summary>Registered tickable systems.</summary>
         private readonly List<ITickableSystem> _systems = new List<ITickableSystem>(4);
 
+        /// <summary>Server-layer facade for routing requests to handlers.</summary>
+        private readonly GameServer _gameServer = new GameServer();
+
         /// <summary>Results from the most recent tick's processing.</summary>
         public IReadOnlyList<MovementResult> LastTickResults { get; private set; }
         private readonly List<MovementResult> _lastResults = new List<MovementResult>(8);
@@ -55,6 +59,24 @@ namespace DungeonVR.Server
             LastTickResults = _lastResults.AsReadOnly();
 
             Debug.Log($"[GameTick] Initialised: Champion at ({_startPosition.x},{_startPosition.y}) facing {_startFacing}. Grid: {_gridData.Width}x{_gridData.Height}");
+        }
+
+        /// <summary>
+        /// Override the start position after Awake (called from DungeonGridSpawner.Start()).
+        /// Resolves the Awake-ordering race between GameTick and DungeonGridSpawner.
+        /// </summary>
+        public void SetStartPosition(Vector2Int position)
+        {
+            if (Champion != null)
+            {
+                Champion.GridPosition = position;
+                _startPosition = position; // keep serialised field in sync
+                Debug.Log($"[GameTick] Start position overridden to ({position.x},{position.y})");
+            }
+            else
+            {
+                Debug.LogWarning("[GameTick] SetStartPosition called but Champion is null — position not applied.");
+            }
         }
 
         /// <summary>
@@ -94,6 +116,13 @@ namespace DungeonVR.Server
         /// </summary>
         public void ProcessTick()
         {
+            // Guard: GridData or its Walls array may not be ready yet
+            if (_gridData == null || _gridData.Walls == null)
+            {
+                Debug.LogWarning($"[GameTick] Tick {CurrentTickNumber}: Skipped — GridData or Walls not initialised yet.");
+                return;
+            }
+
             _lastResults.Clear();
 
             if (_pendingRequests.Count == 0)
@@ -107,14 +136,22 @@ namespace DungeonVR.Server
             bool[,] walls = _gridData.Walls;
             foreach (MovementRequest request in _pendingRequests)
             {
-                MovementResult result = MovementHandler.Handle(request, Champion, walls);
+                MovementResult result = _gameServer.ProcessRequest(request, Champion, walls);
+
+                // Adopt the returned state (cloned + mutated on success, unchanged on failure)
+                if (result.Success)
+                {
+                    Champion = result.NewState;
+                    State.Champion = result.NewState;
+                }
+
                 _lastResults.Add(result);
 
                 if (_logTicks)
                 {
                     if (result.Success)
                     {
-                        Debug.Log($"[GameTick] Tick {CurrentTickNumber}: Move applied -> Champion at ({result.NewPosition.x},{result.NewPosition.y}) facing {result.NewFacing}");
+                        Debug.Log($"[GameTick] Tick {CurrentTickNumber}: Move applied -> Champion at ({result.NewState.GridPosition.x},{result.NewState.GridPosition.y}) facing {result.NewState.FacingDirection}");
                     }
                     else
                     {

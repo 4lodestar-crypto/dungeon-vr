@@ -17,10 +17,12 @@ namespace DungeonVR.Gameplay.Logic
 
         /// <summary>
         /// Process a single movement request against the given grid and champion state.
-        /// Returns a MovementResult indicating success/failure and the new state.
+        /// Returns a MovementResult indicating success/failure and the new (cloned) state.
+        /// The input champion is never mutated — a clone is created on success paths
+        /// (immutability pattern for server-authoritative architecture).
         /// </summary>
         /// <param name="request">The movement request to validate and apply.</param>
-        /// <param name="champion">The current champion state (will be mutated on success).</param>
+        /// <param name="champion">The current champion state (not mutated — cloned on success).</param>
         /// <param name="walls">A 2D bool array where true = blocked/wall.</param>
         public static MovementResult Handle(MovementRequest request, ChampionState champion, bool[,] walls)
         {
@@ -30,9 +32,9 @@ namespace DungeonVR.Gameplay.Logic
             if (request.IsRotation)
             {
                 // A/D — rotate in place
-                FacingDirection newFacing = request.DesiredFacing.Value;
-                champion.FacingDirection = newFacing;
-                return MovementResult.Succeeded(champion.GridPosition, newFacing);
+                ChampionState newState = champion.Clone();
+                newState.FacingDirection = request.DesiredFacing.Value;
+                return MovementResult.Succeeded(newState);
             }
 
             // W/S — calculate target tile
@@ -41,20 +43,21 @@ namespace DungeonVR.Gameplay.Logic
             // Bounds check
             if (target.x < 0 || target.x >= gridWidth || target.y < 0 || target.y >= gridHeight)
             {
-                return MovementResult.Blocked(champion.GridPosition, champion.FacingDirection,
+                return MovementResult.Blocked(champion,
                     $"Move to ({target.x},{target.y}) is out of bounds (grid {gridWidth}x{gridHeight})");
             }
 
             // Wall check
             if (walls[target.x, target.y])
             {
-                return MovementResult.Blocked(champion.GridPosition, champion.FacingDirection,
+                return MovementResult.Blocked(champion,
                     $"Move to ({target.x},{target.y}) is blocked by a wall");
             }
 
-            // Apply movement
-            champion.GridPosition = target;
-            return MovementResult.Succeeded(target, champion.FacingDirection);
+            // Apply movement — clone, modify, return new state
+            ChampionState newState = champion.Clone();
+            newState.GridPosition = target;
+            return MovementResult.Succeeded(newState);
         }
 
         /// <summary>

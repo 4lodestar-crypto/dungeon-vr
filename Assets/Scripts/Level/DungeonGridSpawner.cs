@@ -38,6 +38,9 @@ namespace DungeonVR.Level
         /// <summary>Floor cube dimensions: flat slab.</summary>
         private static readonly Vector3 FLOOR_SCALE = new Vector3(3.0f, 0.3f, 3.0f);
 
+        /// <summary>Cached start position from the generated dungeon, applied in Start().</summary>
+        private Vector2Int _startPosition;
+
         private void Awake()
         {
             // --- 1. Create and run the generator ---
@@ -52,6 +55,7 @@ namespace DungeonVR.Level
 
             DungeonData data = generator.Generate(_seed);
             Debug.Log($"[DungeonGridSpawner] Generated dungeon {data.Width}x{data.Height} with start at ({data.StartPosition.x},{data.StartPosition.y})");
+            _startPosition = data.StartPosition;
 
             // --- 2. Load data into GridData ---
             if (_gridData != null)
@@ -67,18 +71,19 @@ namespace DungeonVR.Level
             // --- 3. Spawn visual tiles ---
             Transform dungeonRoot = SpawnTiles(data);
 
-            // --- 4. Update GameTick start position if available ---
-            if (_gameTick != null && _gameTick.Champion != null)
-            {
-                _gameTick.Champion.GridPosition = data.StartPosition;
-                Debug.Log($"[DungeonGridSpawner] Updated GameTick start position to ({data.StartPosition.x},{data.StartPosition.y})");
-            }
-            else if (_gameTick != null)
-            {
-                Debug.Log("[DungeonGridSpawner] GameTick reference set but Champion not yet initialised — keeping serialized start position.");
-            }
-
             Debug.Log($"[DungeonGridSpawner] Spawn complete — {dungeonRoot.childCount} tiles under '{dungeonRoot.name}'.");
+        }
+
+        /// <summary>
+        /// Unity Start: applies the dungeon's start position to GameTick.
+        /// Runs after all Awake() calls are complete, guaranteeing GameTick.Champion is initialised.
+        /// </summary>
+        private void Start()
+        {
+            if (_gameTick != null)
+            {
+                _gameTick.SetStartPosition(_startPosition);
+            }
         }
 
         /// <summary>
