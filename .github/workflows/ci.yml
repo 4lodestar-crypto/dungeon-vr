@@ -33,23 +33,11 @@ jobs:
       - name: Check YAML
         run: python3 -c "import yaml; yaml.safe_load(open('.github/workflows/ci.yml')); print('valid')"
 
-  activate-license:
-    name: Activate Unity License
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    needs: [lint]
-    steps:
-      - uses: actions/checkout@v4
-      - uses: game-ci/unity-activate@v2
-        with:
-          unityVersion: ${{ env.UNITY_VERSION }}
-          projectPath: .
-
   build-windows:
     name: Build Windows Desktop
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    needs: [activate-license]
+    needs: [lint]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -99,7 +87,7 @@ jobs:
     name: EditMode Tests
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    needs: [activate-license]
+    needs: [lint]
     steps:
       - uses: actions/checkout@v4
         with:
