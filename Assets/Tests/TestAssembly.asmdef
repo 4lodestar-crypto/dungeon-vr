@@ -1,0 +1,21 @@
+{
+    "name": "DungeonVR.Tests",
+    "rootNamespace": "",
+    "references": [
+        "DungeonVR.Shared",
+        "DungeonVR.Gameplay",
+        "DungeonVR.Server",
+        "DungeonVR.Level"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": false,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

@@ -1,0 +1,17 @@
+{
+    "name": "DungeonVR.Server",
+    "rootNamespace": "",
+    "references": [
+        "DungeonVR.Shared",
+        "DungeonVR.Gameplay"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": false,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

@@ -1,0 +1,185 @@
+# =============================================================================
+# Dungeon VR — CI Pipeline
+# =============================================================================
+# This workflow defines the continuous integration pipeline for Dungeon VR.
+# Currently in V0 with placeholder steps. To make this pipeline functional,
+# follow the instructions in docs/build/unity-ci-setup.md (see Step Comments).
+#
+# REQUIREMENTS TO ACTIVATE:
+#   1. A Unity Plus/Pro license with activation for CI
+#   2. A self-hosted or GitHub-hosted runner with Unity installed
+#   3. Unity license activation via Unity -batchmode -manualLicenseFile
+#   4. Setup Unity Editor path via project settings or environment variable
+# =============================================================================
+
+name: Dungeon VR CI
+
+on:
+  push:
+    branches: [ main, develop, 'feature/**' ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      # -----------------------------------------------------------------------
+      # Step 1: Checkout repository
+      # -----------------------------------------------------------------------
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          lfs: true  # Pull Unity assets stored via Git LFS
+          fetch-depth: 1
+
+      # -----------------------------------------------------------------------
+      # Step 2: Cache Unity Library folder (speeds up subsequent builds)
+      # -----------------------------------------------------------------------
+      # Unity's Library folder contains imported asset artifacts. Caching it
+      # between runs can cut import time from 10+ minutes to under 1 minute.
+      # Key format: unity-library-{hash of ProjectSettings/ProjectVersion.txt}
+      # -----------------------------------------------------------------------
+      - name: Cache Unity Library
+        uses: actions/cache@v4
+        with:
+          path: Library
+          key: Library-${{ hashFiles('ProjectSettings/ProjectVersion.txt') }}
+          restore-keys: |
+            Library-
+
+      # -----------------------------------------------------------------------
+      # Step 3: Setup Unity — PLACEHOLDER
+      # -----------------------------------------------------------------------
+      # REAL STEP: Replace this placeholder with Unity Editor setup.
+      # Recommended approach:
+      #
+      #   - Use game.ci/unity-builder (GitHub Action):
+      #       uses: game-ci/unity-builder@v4
+      #       with:
+      #         projectPath: .
+      #         unityVersion: 6000.0.XXf1      # Unity 6 LTS version
+      #         targetPlatform: StandaloneWindows64
+      #
+      #   - OR use game.ci/unity-activator to activate a Unity license:
+      #       uses: game-ci/unity-activator@v3
+      #       with:
+      #         unityVersion: 6000.0.XXf1
+      #         customImage: 'unityci/editor:ubuntu-6000.0.XXf1-base-1'
+      #
+      #   Prerequisites:
+      #     - Set secrets UNITY_EMAIL, UNITY_PASSWORD, UNITY_SERIAL in GitHub repo
+      #     - Set UNITY_LICENSE secret (base64-encoded Unity license file)
+      #     - Use a self-hosted runner or game-ci Docker image
+      # -----------------------------------------------------------------------
+      - name: Setup Unity (placeholder)
+        run: |
+          echo "=========================================="
+          echo "  Unity Editor Setup — PLACEHOLDER"
+          echo "=========================================="
+          echo "To make this step functional:"
+          echo "  1. Install game-ci/unity-builder GitHub Action"
+          echo "  2. Set UNITY_EMAIL, UNITY_PASSWORD, UNITY_SERIAL secrets"
+          echo "  3. Configure unityVersion to your Unity 6 LTS version"
+          echo "  4. Use a self-hosted runner with Docker support"
+          echo ""
+          echo "See docs/build/unity-ci-setup.md for complete instructions."
+          echo "=========================================="
+
+      # -----------------------------------------------------------------------
+      # Step 4: Build — PLACEHOLDER
+      # -----------------------------------------------------------------------
+      # REAL STEP: Replace with Unity batch-mode build.
+      # game-ci/unity-builder handles this automatically when configured above.
+      # Manual equivalent:
+      #
+      #   unity-editor -projectPath . -quit -batchmode \
+      #     -buildTarget StandaloneWindows64 \
+      #     -logFile build.log
+      #
+      # Build output is typically in Builds/ or specified by -buildPath.
+      # -----------------------------------------------------------------------
+      - name: Build (placeholder)
+        run: |
+          echo "=========================================="
+          echo "  Unity Build — PLACEHOLDER"
+          echo "=========================================="
+          echo "Build skipped — Unity batch-mode requires a" 
+          echo "Unity license and Unity Editor on the runner."
+          echo ""
+          echo "To activate:"
+          echo "  - Configure game-ci/unity-builder with build target"
+          echo "  - Or use: unity-editor -quit -batchmode -buildTarget ..."
+          echo "=========================================="
+
+      # -----------------------------------------------------------------------
+      # Step 5: EditMode Tests — PLACEHOLDER
+      # -----------------------------------------------------------------------
+      # REAL STEP: Run EditMode tests via Unity test runner.
+      # game-ci/unity-builder can run tests with:
+      #
+      #   uses: game-ci/unity-test-runner@v4
+      #   with:
+      #     projectPath: .
+      #     unityVersion: 6000.0.XXf1
+      #     testMode: EditMode
+      #     artifactsPath: test-results
+      #
+      # Manual equivalent:
+      #
+      #   unity-editor -projectPath . -quit -batchmode \
+      #     -runTests -testPlatform EditMode \
+      #     -testResults test-results/results.xml \
+      #     -logFile test.log
+      #
+      # Tests are in DungeonVR.Tests assembly (Assets/Tests/), include:
+      #   - GridMovementTests  (6 tests: forward, wall block, rotate L/R, backward, OOB)
+      #   - TickLoopTests      (5 tests: empty tick, valid move, two moves, invalid move, constant)
+      #   - MovementIntegrationTests (3 tests: full pipeline, empty ticks, round-trip)
+      # -----------------------------------------------------------------------
+      - name: EditMode Tests (placeholder)
+        run: |
+          echo "=========================================="
+          echo "  EditMode Tests — PLACEHOLDER"
+          echo "=========================================="
+          echo "Tests are skipped — Unity test runner requires" 
+          echo "a Unity Editor on the runner."
+          echo ""
+          echo "Test assembly: DungeonVR.Tests"
+          echo "Test count:    14 tests (6 unit + 5 tick + 3 integration)"
+          echo ""
+          echo "To activate, use game-ci/unity-test-runner:"
+          echo "  - testMode: EditMode"
+          echo "  - artifactsPath: test-results"
+          echo "=========================================="
+
+      # -----------------------------------------------------------------------
+      # Step 6: Archive test results — always runs
+      # -----------------------------------------------------------------------
+      # Collects NUnit XML test results even if tests fail, so you can
+      # download and inspect them from the Actions run summary.
+      # -----------------------------------------------------------------------
+      - name: Archive test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: |
+            *.xml
+            test-results/**/*.xml
+            TestResults/**/*.xml
+          if-no-files-found: warn
+          retention-days: 30
+
+      # -----------------------------------------------------------------------
+      # Step 7: Notify on failure (optional)
+      # -----------------------------------------------------------------------
+      # Add Slack/Discord/email notification here for production use.
+      # Example:
+      #   - name: Notify on failure
+      #     if: failure()
+      #     uses: slackapi/slack-github-action@v1
+      #     with:
+      #       payload: '{"text": "Dungeon VR CI failed on ${{ github.ref }}"}'
+      # -----------------------------------------------------------------------

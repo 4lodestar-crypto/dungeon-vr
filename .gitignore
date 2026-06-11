@@ -1,0 +1,55 @@
+# =============
+# Unity generated
+# =============
+[Ll]ibrary/
+[Tt]emp/
+[Oo]bj/
+[Bb]uild/
+[Bb]uilds/
+[Ll]ogs/
+[Mm]emoryCaptures/
+[Uu]serSettings/
+
+# =============
+# Visual Studio / IDE
+# =============
+*.csproj
+*.unityproject
+*.sln
+*.suo
+*.tmp
+*.user
+*.userprefs
+*.pidb
+*.booproj
+*.svd
+*.pdb
+*.mdb
+.vs/
+.idea/
+*.swp
+*.swo
+*~
+
+# =============
+# OS files
+# =============
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# =============
+# Test coverage
+# =============
+Assets/Tests/Coverage/
+Assets/Tests/PlayMode/Performance/Reports/
+
+# =============
+# Large binary logs
+# =============
+*.log
+
+# =============
+# Git LFS pointer backup
+# =============
+*.lfs
