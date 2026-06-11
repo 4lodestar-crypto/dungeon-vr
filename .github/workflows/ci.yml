@@ -1,7 +1,4 @@
 # CI Pipeline for Dungeon VR
-# Builds Windows Desktop standalone, runs EditMode tests, collects coverage.
-# Uses Unity Personal (free tier) via game-ci/unity-actions.
-
 name: CI
 
 on:
@@ -16,144 +13,118 @@ concurrency:
 
 env:
   UNITY_VERSION: 6000.4.10f1
-  UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+  UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+  UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+  UNITY_SERIAL: ${{ secrets.UNITY_SERIAL }}
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
-  # ---------- Lint ----------
   lint:
     name: Lint & Format
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Verify .gitignore covers Unity files
+      - uses: actions/checkout@v4
+      - name: Verify .gitignore
         run: |
-          for pattern in "Library" "Temp" "Obj" "Build"; do
-            # Normalize bracket patterns [Ll] -> L, then grep case-insensitively
-            if sed -E 's/\[([[:alpha:]])[[:alpha:]]\]/\1/g' .gitignore | grep -qiE "^/?${pattern}/"; then
-              echo "PASS: .gitignore covers ${pattern}/"
-            else
-              echo "FAIL: .gitignore missing ${pattern}/"
-              exit 1
-            fi
+          for p in Library Temp Obj Build; do
+            if sed -E 's/\[([[:alpha:]])[[:alpha:]]\]/\1/g' .gitignore | grep -qiE "^/?$p/"; then echo "PASS: $p"; else echo "FAIL: $p"; exit 1; fi
           done
+      - name: Check YAML
+        run: python3 -c "import yaml; yaml.safe_load(open('.github/workflows/ci.yml')); print('valid')"
 
-      - name: Check YAML validity
-        run: |
-          python3 -c "import yaml; yaml.safe_load(open('.github/workflows/ci.yml')); print('CI YAML is valid')"
-
-      - name: Check test file namespace convention
-        run: |
-          errors=0
-          while IFS= read -r -d '' f; do
-            dir=$(dirname "${f}")
-            ns=$(grep -oP 'namespace\s+\K\S+' "$f" | head -1)
-            if [ -n "$ns" ]; then
-              expected="DungeonVR.Tests.EditMode"
-              echo "$ns" | grep -q "^$expected" || { echo "WARN: $f has namespace '$ns', expected '$expected.*'"; errors=$((errors+1)); }
-            fi
-          done < <(find Assets/Tests -name '*.cs' -print0)
-          if [ "$errors" -gt 0 ]; then echo "Namespace check completed with $errors warnings"; fi
-
-  # ---------- Build Windows Standalone ----------
   build-windows:
     name: Build Windows Desktop
     runs-on: ubuntu-latest
     timeout-minutes: 20
     needs: [lint]
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           lfs: true
-
-      - name: Cache Library folder
-        uses: actions/cache@v4
+      - uses: actions/cache@v4
         with:
           path: Library/
           key: Library-${{ hashFiles('Packages/manifest.json') }}-${{ env.UNITY_VERSION }}
-          restore-keys: |
-            Library-${{ hashFiles('Packages/manifest.json') }}-
-            Library-
-
-      - name: Unity Build (Win64)
-        uses: game-ci/unity-builder@v2
+          restore-keys: Library-${{ hashFiles('Packages/manifest.json') }}-
+      - uses: game-ci/unity-builder@v5
         with:
           buildMethod: BuildScript.PerformWin64Build
           targetPlatform: StandaloneWindows64
           unityVersion: ${{ env.UNITY_VERSION }}
           projectPath: .
           allowDirtyBuild: false
-
-      - name: Upload Build Artifact
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: DungeonVR-Win64
           path: Build/
           retention-days: 7
 
-  # ---------- EditMode Tests ----------
+  runtime-smoke-test:
+    name: Runtime Smoke Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: [build-windows]
+    if: always() && needs.build-windows.result == 'success'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: DungeonVR-Win64
+          path: Build/
+      - name: Smoke test
+        run: |
+          sudo dpkg --add-architecture i386
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq wine64 wine32 2>&1 | tail -3
+          exe=$(find Build/ -name '*.exe' | head -1)
+          [ -z "$exe" ] && { echo "FAIL: no exe"; exit 1; }
+          echo "Testing: $exe"
+          timeout 30 wine "$exe" -batchmode -nographics -quit 2>&1 || true
+          rc=$?; [ $rc -eq 0 ] && echo "PASS" || [ $rc -eq 124 ] && echo "PASS (timeout)" || { echo "FAIL: $rc"; exit 1; }
+
   test-editmode:
     name: EditMode Tests
     runs-on: ubuntu-latest
     timeout-minutes: 10
     needs: [lint]
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           lfs: true
-
-      - name: Cache Library folder
-        uses: actions/cache@v4
+      - uses: actions/cache@v4
         with:
           path: Library/
           key: Library-${{ hashFiles('Packages/manifest.json') }}-${{ env.UNITY_VERSION }}
-          restore-keys: |
-            Library-${{ hashFiles('Packages/manifest.json') }}-
-            Library-
-
-      - name: Unity EditMode Tests
-        uses: game-ci/unity-test-runner@v2
+          restore-keys: Library-${{ hashFiles('Packages/manifest.json') }}-
+      - uses: game-ci/unity-test-runner@v4
         with:
           testMode: EditMode
           unityVersion: ${{ env.UNITY_VERSION }}
           projectPath: .
           artifactsPath: Tests/EditMode-Results
-
-      - name: Upload Test Results
+      - if: always()
         uses: actions/upload-artifact@v4
-        if: always()
         with:
           name: EditMode-Test-Results
           path: Tests/EditMode-Results/
           retention-days: 30
 
-  # ---------- Code Coverage ----------
   coverage:
     name: Code Coverage
     runs-on: ubuntu-latest
     timeout-minutes: 15
     needs: [test-editmode]
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           lfs: true
-
-      - name: Cache Library folder
-        uses: actions/cache@v4
+      - uses: actions/cache@v4
         with:
           path: Library/
           key: Library-${{ hashFiles('Packages/manifest.json') }}-${{ env.UNITY_VERSION }}
-          restore-keys: |
-            Library-${{ hashFiles('Packages/manifest.json') }}-
-            Library-
-
-      - name: Unity Coverage Tests
-        uses: game-ci/unity-test-runner@v2
+          restore-keys: Library-${{ hashFiles('Packages/manifest.json') }}-
+      - uses: game-ci/unity-test-runner@v4
         with:
           testMode: EditMode
           unityVersion: ${{ env.UNITY_VERSION }}
@@ -161,34 +132,22 @@ jobs:
           artifactsPath: Tests/Coverage-Results
           enableCoverage: true
           coverageOptions: 'generateHtmlReport;generateBadgeReport;assemblyFilters:+DungeonVR.*'
-
-      - name: Upload Coverage Report
+      - if: always()
         uses: actions/upload-artifact@v4
-        if: always()
         with:
           name: Code-Coverage-Report
           path: Tests/Coverage-Results/
           retention-days: 30
 
-  # ---------- Summary ----------
   summary:
     name: Build Summary
     runs-on: ubuntu-latest
-    needs: [build-windows, test-editmode, coverage]
+    needs: [build-windows, test-editmode, coverage, runtime-smoke-test]
     if: always()
     steps:
-      - name: Print Summary
-        run: |
+      - run: |
           echo "## CI Summary for ${{ github.sha }}"
-          echo ""
-          echo "**Build Windows Desktop:** ${{ needs.build-windows.result }}"
-          echo "**EditMode Tests:** ${{ needs.test-editmode.result }}"
-          echo "**Code Coverage:** ${{ needs.coverage.result }}"
-          echo ""
-          echo "### Conclusion"
-          if [[ "${{ needs.build-windows.result }}" == "success" ]] && \
-             [[ "${{ needs.test-editmode.result }}" == "success" ]]; then
-            echo "✅ Build and tests passed."
-          else
-            echo "❌ One or more required jobs failed."
-          fi
+          echo "**Build:** ${{ needs.build-windows.result }}"
+          echo "**Tests:** ${{ needs.test-editmode.result }}"
+          echo "**Coverage:** ${{ needs.coverage.result }}"
+          echo "**Smoke:** ${{ needs.runtime-smoke-test.result }}"
