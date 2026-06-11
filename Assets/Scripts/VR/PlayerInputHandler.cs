@@ -1,8 +1,7 @@
+using DungeonVR.Gameplay.Components;
+using DungeonVR.Shared;
+using DungeonVR.Shared.Enums;
 using UnityEngine;
-
-// Stub — will be replaced with proper InputSystem in V1+
-// ReSharper disable once RedundantUsingDirective
-using UnityEngine.InputSystem;
 
 namespace DungeonVR.VR
 {
@@ -19,7 +18,7 @@ namespace DungeonVR.VR
         //  Inspector — V0 stub for future rebinding system
         // ------------------------------------------------------------------
         [Header("Rebinding (V0 stub — not used yet)")]
-        [SerializeField] private InputActionMap _actionMap;
+        // [SerializeField] private InputActionMap _actionMap;
 
         // ------------------------------------------------------------------
         //  Private state
@@ -45,8 +44,14 @@ namespace DungeonVR.VR
 
         private void Awake()
         {
-            // V0-EXCEPTION: direct FindObjectOfType; replace with constructor DI in V1
-            _inputQueueBridge = FindObjectOfType<InputQueueBridge>();
+            // V0-EXCEPTION: InputQueueBridge found in Start() not Awake()
+            // because GridBuilder creates it during its Awake() and execution order
+            // of components on the same GameObject is non-deterministic.
+        }
+
+        private void Start()
+        {
+            _inputQueueBridge = FindObjectOfType<DungeonVR.Gameplay.Components.InputQueueBridge>();
 
             if (_inputQueueBridge == null)
             {
@@ -60,16 +65,16 @@ namespace DungeonVR.VR
                 return;
 
             // --- WASD (primary) ---
-            HandleKey(KeyCode.W, Enums.MovementDirection.Forward,  ref _wHeld);
-            HandleKey(KeyCode.S, Enums.MovementDirection.Backward, ref _sHeld);
-            HandleKey(KeyCode.A, Enums.MovementDirection.RotateLeft,  ref _aHeld);
-            HandleKey(KeyCode.D, Enums.MovementDirection.RotateRight, ref _dHeld);
+            HandleKey(KeyCode.W, MovementDirection.Forward,  ref _wHeld);
+            HandleKey(KeyCode.S, MovementDirection.Backward, ref _sHeld);
+            HandleKey(KeyCode.A, MovementDirection.RotateLeft,  ref _aHeld);
+            HandleKey(KeyCode.D, MovementDirection.RotateRight, ref _dHeld);
 
             // --- Arrow keys (secondary) ---
-            HandleKey(KeyCode.UpArrow,    Enums.MovementDirection.Forward,      ref _upHeld);
-            HandleKey(KeyCode.DownArrow,  Enums.MovementDirection.Backward,     ref _downHeld);
-            HandleKey(KeyCode.LeftArrow,  Enums.MovementDirection.RotateLeft,   ref _leftHeld);
-            HandleKey(KeyCode.RightArrow, Enums.MovementDirection.RotateRight,  ref _rightHeld);
+            HandleKey(KeyCode.UpArrow,    MovementDirection.Forward,      ref _upHeld);
+            HandleKey(KeyCode.DownArrow,  MovementDirection.Backward,     ref _downHeld);
+            HandleKey(KeyCode.LeftArrow,  MovementDirection.RotateLeft,   ref _leftHeld);
+            HandleKey(KeyCode.RightArrow, MovementDirection.RotateRight,  ref _rightHeld);
         }
 
         // ------------------------------------------------------------------
@@ -80,7 +85,7 @@ namespace DungeonVR.VR
         /// Processes a single key: queues one MovementRequest on first press,
         /// then suppresses repeats until the key is released.
         /// </summary>
-        private void HandleKey(KeyCode key, Enums.MovementDirection direction, ref bool heldFlag)
+        private void HandleKey(KeyCode key, MovementDirection direction, ref bool heldFlag)
         {
             if (Input.GetKey(key))
             {
@@ -102,7 +107,7 @@ namespace DungeonVR.VR
         /// <summary>
         /// Builds a MovementRequest with the current tick and sends it to the bridge.
         /// </summary>
-        private void DispatchMovement(Enums.MovementDirection direction)
+        private void DispatchMovement(MovementDirection direction)
         {
             // V0-EXCEPTION: tick number sourced from InputQueueBridge/GameLoopController;
             // server-authoritative tick in V1

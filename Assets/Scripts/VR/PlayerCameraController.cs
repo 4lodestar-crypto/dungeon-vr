@@ -1,3 +1,4 @@
+using DungeonVR.Gameplay.Components;
 using DungeonVR.Gameplay.Logic;
 using DungeonVR.Shared;
 using UnityEngine;
@@ -49,22 +50,27 @@ namespace DungeonVR.VR
         private void Awake()
         {
             _camera = GetComponent<Camera>();
-
-            // V0-EXCEPTION: direct FindObjectOfType; replace with constructor DI in V1
-            _gameLoopController = FindObjectOfType<GameLoopController>();
-
-            if (_gameLoopController == null)
-            {
-                Debug.LogError("[PlayerCameraController] No GameLoopController found in scene. Camera will not follow champion.", this);
-            }
+            // V0-EXCEPTION: GameLoopController found in Start() not Awake()
+            // because GridBuilder creates it during its Awake() and execution order
+            // is non-deterministic.
         }
 
         private void Start()
         {
-            // Snapshot initial rotation
-            if (_gameLoopController?.GameState?.Champion != null)
+            _gameLoopController = FindObjectOfType<DungeonVR.Gameplay.Components.GameLoopController>();
+
+            if (_gameLoopController == null)
             {
-                _targetBaseRotation = FacingIndexToRotation(_gameLoopController.GameState.Champion.FacingIndex);
+                Debug.LogError("[PlayerCameraController] No GameLoopController found in scene. Camera will not follow champion.", this);
+                return;
+            }
+
+            // Snap to initial champion position immediately
+            if (_gameLoopController.GameState?.Champion != null)
+            {
+                var champion = _gameLoopController.GameState.Champion;
+                _targetBaseRotation = FacingIndexToRotation(champion.FacingIndex);
+                transform.position = champion.WorldPosition + Vector3.up * GameConstants.EYE_HEIGHT;
                 transform.rotation = _targetBaseRotation;
             }
         }

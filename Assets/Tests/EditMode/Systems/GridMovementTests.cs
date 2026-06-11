@@ -3,6 +3,7 @@ using DungeonVR.Shared;
 using DungeonVR.Shared.Enums;
 using DungeonVR.Shared.Requests;
 using DungeonVR.Tests.EditMode.Fixtures;
+using DungeonVR.Shared.Results;
 using NUnit.Framework;
 using UnityEngine;
 

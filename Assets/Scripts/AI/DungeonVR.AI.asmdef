@@ -1,7 +1,9 @@
 {
-    "name": "DungeonVR.Shared",
+    "name": "DungeonVR.AI",
     "rootNamespace": "",
-    "references": [],
+    "references": [
+        "DungeonVR.Shared"
+    ],
     "includePlatforms": [],
     "excludePlatforms": [],
     "allowUnsafeCode": false,

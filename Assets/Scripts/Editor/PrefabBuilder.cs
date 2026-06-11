@@ -20,7 +20,7 @@ namespace DungeonVR.Editor
         /// </summary>
         private static Material CreateMaterial(Color color, string materialName)
         {
-            string shaderName = GraphicsSettings.renderPipelineAsset != null
+            string shaderName = GraphicsSettings.defaultRenderPipeline != null
                 ? "Universal Render Pipeline/Lit"
                 : "Standard";
 

@@ -1,7 +1,10 @@
 {
-    "name": "DungeonVR.Shared",
+    "name": "DungeonVR.VR",
     "rootNamespace": "",
-    "references": [],
+    "references": [
+        "DungeonVR.Gameplay",
+        "DungeonVR.Shared"
+    ],
     "includePlatforms": [],
     "excludePlatforms": [],
     "allowUnsafeCode": false,

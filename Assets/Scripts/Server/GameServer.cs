@@ -1,5 +1,4 @@
 using System.Collections.Generic;
-using DungeonVR.Gameplay.Logic;
 using DungeonVR.Shared;
 using DungeonVR.Shared.Interfaces;
 using DungeonVR.Shared.Requests;
@@ -12,7 +11,7 @@ namespace DungeonVR.Server
     /// </summary>
     public class GameServer
     {
-        public GameState State { get; private set; }
+        public GameState State { get; set; }
         private readonly Queue<MovementRequest> _requestQueue = new Queue<MovementRequest>();
         private IMovementRequestHandler _movementHandler;
 
