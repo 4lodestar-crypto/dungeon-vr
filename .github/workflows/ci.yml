@@ -28,7 +28,7 @@ jobs:
       - name: Verify .gitignore
         run: |
           for p in Library Temp Obj Build; do
-            s=$(sed -E 's/\[([a-z])[a-z]\]/\1/g' .gitignore | grep -qiE "^/?$p/") && echo "PASS: $p" || { echo "FAIL: $p"; exit 1; }
+            if sed -E 's/\[([[:alpha:]])[[:alpha:]]\]/\1/g' .gitignore | grep -qiE "^/?$p/"; then echo "PASS: $p"; else echo "FAIL: $p"; exit 1; fi
           done
       - name: Check YAML
         run: python3 -c "import yaml; yaml.safe_load(open('.github/workflows/ci.yml')); print('valid')"
