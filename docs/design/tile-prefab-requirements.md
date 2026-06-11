@@ -1,73 +1,201 @@
-# Tile Prefab Requirements (V0 Draft)
+# Tile Prefab Requirements
 
-## Updated: V0-001
-
-Requirements for all tile prefabs for the Dungeon VR project.
-
----
-
-### Core Grid Constants
-
-| Property     | Value        | Source                        |
-|-------------|-------------|-------------------------------|
-| Grid cell    | 3 m × 3 m   | `GameConstants.TILE_SIZE`     |
-| Pivot        | center-bottom at Y=0 | Design convention    |
-| Render pipeline | URP Lit  | Project settings              |
+> **Phase:** V1-001 — Art/Asset Integration  
+> **Author:** Art/Asset Integrator Agent  
+> **Last Updated:** 2026-06-11
 
 ---
 
-### Prefab Requirements
+## Overview
 
-| # | Requirement | V0 Status | V1 Plan |
-|---|------------|-----------|---------|
-| 1 | **Grid cell**: every tile occupies exactly 3 m × 3 m in XZ | ✅ Done | — |
-| 2 | **Pivot**: tile root transform origin at Y=0, centered in XZ | ✅ Done | — |
-| 3 | **Walls**: include a BoxCollider matching visual bounds | ✅ Done | Tune collider shape |
-| 4 | **Floors**: no collider (or a trigger for gameplay events) | ✅ No collider | Trigger zone for footstep FX |
-| 5 | **Materials**: URP Lit shader on all renderers | ✅ URP Lit / Standard fallback | Shared material atlas |
-| 6 | **LOD groups**: not required in V0 | ❌ Skipped | LOD0–LOD2 added |
-| 7 | **GPU instancing**: tiles should share materials where possible | ⚠️ Per-instance mats (V0 placeholder) | Shared material block |
+All tile prefabs for Dungeon VR conform to a standard 3m × 3m footprint with a center-bottom pivot and Y=0 floor level. Wall height is 3m. The `DungeonVR.Shared.GameConstants` class defines `TILE_SIZE = 3f` as the canonical reference.
 
 ---
 
-### Current Prefab List (V0 Placeholders)
+## Naming Conventions
 
-Built programmatically via `PrefabBuilder` (`Assets/Scripts/Editor/PrefabBuilder.cs`).
+### Prefab Naming
 
-| Prefab | Primitive | Scale | Material | Collider |
-|--------|-----------|-------|----------|----------|
-| `Floor_Tile_Stone` | Plane | (3, 1, 3) | `#CCCCCC` (light gray) | None |
-| `Wall_Tile_Stone` | Cube | (3, 3, 0.5) | `#666666` (dark gray) | Box (auto) |
-| `Champion_Default` | Capsule | H = 1.8 | `#4488FF` (blue) | Capsule (auto) |
+| Type | Prefab Name | File Name |
+|------|-------------|-----------|
+| Wall | `Wall_Tile` | `Wall_Tile.prefab` |
+| Floor | `Floor_Tile` | `Floor_Tile.prefab` |
+| Door | `Door_Tile` | `Door_Tile.prefab` |
+| Altar | `Altar_Tile` | `Altar_Tile.prefab` |
+| Trap Trigger | `Trap_Trigger_Tile` | `Trap_Trigger_Tile.prefab` |
+| Stairs | `Stairs_Tile` | `Stairs_Tile.prefab` |
+| Champion | `Champion` | `Champion.prefab` |
+
+### Material Naming Convention: `Mat_{TileType}_{Color}.mat`
+
+| Material Name | Tile Type | Color | Hex |
+|---------------|-----------|-------|-----|
+| `Mat_Wall_DarkStoneGray` | Wall | Dark Stone Gray | `#555566` |
+| `Mat_Floor_StoneGray` | Floor | Stone Gray | `#888899` |
+| `Mat_Door_Frame` | Door | Slate Gray | `#666677` |
+| `Mat_Door_Panel` | Door | Wood Brown | `#8B7355` |
+| `Mat_Altar_Gold` | Altar | Gold | `#DAA520` |
+| `Mat_Altar_Glow` | Altar | Bright Gold (Unlit) | `#FFD700` |
+| `Mat_Trap_Red` | Trap Trigger | Alert Red | `#CC3333` |
+| `Mat_Stairs_StoneGray` | Stairs | Medium Stone Gray | `#777788` |
+| `Mat_Champion_Blue` | Champion | Hero Blue | `#4488FF` |
+
+### Shader Usage
+
+- **Opaque materials:** `Universal Render Pipeline/Lit` (fallback: `Standard`)
+- **Emissive/glow materials:** `Universal Render Pipeline/Unlit` (fallback: `Standard`)
 
 ---
 
-### Loading Strategy (V0)
+## Prefab Specifications
+
+### 1. Wall_Tile
+
+| Property | Value |
+|----------|-------|
+| Footprint | 3m × 3m |
+| Height | 3m |
+| Primitive | Cube |
+| Material | `Mat_Wall_DarkStoneGray` (`#555566`) |
+| Collider | BoxCollider (auto from primitive) |
+| Static | ✅ Yes |
+| Pivot | Center-bottom at Y=0 |
+
+### 2. Floor_Tile
+
+| Property | Value |
+|----------|-------|
+| Footprint | 3m × 3m |
+| Height | ~0.3m (scaled plane) |
+| Primitive | Plane (scaled 3/10) |
+| Material | `Mat_Floor_StoneGray` (`#888899`) |
+| Collider | ❌ None |
+| Static | ✅ Yes |
+| Pivot | Center-bottom at Y=0 |
+
+### 3. Door_Tile
+
+| Property | Value |
+|----------|-------|
+| Footprint | 3m × 3m |
+| Components | Left pillar, right pillar, top beam, door panel |
+| Frame Material | `Mat_Door_Frame` (`#666677`) |
+| Panel Material | `Mat_Door_Panel` (`#8B7355`) |
+| Collider | BoxCollider on frame pieces |
+| Static | ✅ Yes |
+| Pivot | Center-bottom at Y=0 (bottom of tile) |
+
+### 4. Altar_Tile
+
+| Property | Value |
+|----------|-------|
+| Footprint | 3m × 3m |
+| Structure | 3 stepped cubes (base → mid → top) + glow sphere |
+| Material | `Mat_Altar_Gold` (`#DAA520`) |
+| Glow Material | `Mat_Altar_Glow` (`#FFD700`, Unlit) |
+| Collider | BoxCollider on each step |
+| Static | ✅ Yes |
+| Height | ~1.65m to top of glow |
+
+### 5. Trap_Trigger_Tile
+
+| Property | Value |
+|----------|-------|
+| Footprint | 3m × 3m |
+| Visual | Thin red cube floor tile |
+| Trigger | BoxCollider with `isTrigger = true` |
+| Material | `Mat_Trap_Red` (`#CC3333`) |
+| Collider | ❌ None on visual; ✅ Trigger collider on child |
+| Static | ✅ Yes |
+| Pivot | Center-bottom at Y=0 |
+
+### 6. Stairs_Tile
+
+| Property | Value |
+|----------|-------|
+| Footprint | 3m × 3m |
+| Steps | 3 steps, each 1m high × 1m deep |
+| Material | `Mat_Stairs_StoneGray` (`#777788`) |
+| Collider | BoxCollider on each step |
+| Static | ✅ Yes |
+| Total Height | 3m |
+
+### 7. Champion
+
+| Property | Value |
+|----------|-------|
+| Height | 1.8m |
+| Radius | 0.4m |
+| Primitive | Capsule |
+| Material | `Mat_Champion_Blue` (`#4488FF`) |
+| Collider | CapsuleCollider (Y-axis) |
+| Static | ❌ No (character) |
+| Pivot | Center-bottom at Y=0 |
+
+---
+
+## Directory Structure
 
 ```
-Caller → PrefabProvider.GetXxxPrefab()
-          ├── Resources.Load("Prefabs/Xxx")   → cached, returned
-          └── null → PrefabBuilder.BuildXxx()  → cached, returned
+Assets/
+├── Art/
+│   ├── Materials/
+│   │   └── .gitkeep
+│   ├── Prefabs/
+│   │   ├── Champion/
+│   │   │   └── .gitkeep          # → Champion.prefab
+│   │   └── Tiles/
+│   │       └── .gitkeep          # → 6 tile prefabs
+│   │       # (prefabs generated by TilePrefabBaker)
+│   └── ...
+├── Scripts/
+│   ├── Art/
+│   │   └── TileFactory.cs        # Runtime factory
+│   └── Editor/
+│       └── TilePrefabBaker.cs     # Editor baker tool
+└── ...
 ```
 
-- **V0**: Runtime fallback building via `PrefabBuilder` (no `.prefab` assets required)
-- **V1**: Pre-built `.prefab` files placed in `Assets/Resources/Prefabs/`; the runtime builder is removed
+---
+
+## Lighting Setup Notes
+
+### Directional Light
+
+| Property | Recommended Value |
+|----------|-------------------|
+| Intensity | 1.0 – 1.2 |
+| Rotation (Euler) | X: 45–50°, Y: 30°, Z: 0° |
+| Shadow Type | Hard Shadows |
+| Shadow Bias | 0.05 |
+| Normal Bias | 0.4 |
+
+### Ambient & Fog
+
+| Property | Recommended Value |
+|----------|-------------------|
+| Ambient Mode | Color |
+| Ambient Color | `#202028` (dark blue-gray) |
+| Fog Mode | Exponential |
+| Fog Color | `#0A0A0F` (near-black) |
+| Fog Density | 0.02 – 0.04 |
+
+### Post-Processing (URP Volume)
+
+| Effect | Setting |
+|--------|---------|
+| Tonemapping | Neutral or ACES |
+| Vignette | Subtle, intensity ~0.3 |
+| Bloom | Optional, threshold ~1.0 |
 
 ---
 
-### Material Convention
+## Workflow for Adding New Tile Types
 
-| Label | Hex       | RGB            | Used By           |
-|-------|-----------|----------------|-------------------|
-| Light gray | `#CCCCCC` | (204, 204, 204) | Floor tiles       |
-| Dark gray  | `#666666` | (102, 102, 102) | Wall tiles        |
-| Blue       | `#4488FF` | (68, 136, 255)  | Champion capsule  |
-
----
-
-### Known V0 Limitations
-
-1. Materials are **per-instance** — no GPU instancing across tiles.
-2. No LOD groups — full-detail meshes at all distances.
-3. Floor tiles receive shadows but cast none by default.
-4. Champion capsule uses primitive collider — not fine-tuned for VR hand presence.
+1. Add a static `CreateXxxPrefab()` method to `TileFactory.cs`
+2. Cache a new `Material` field using `GetOrCreateMaterial()`
+3. Build the prefab root with primitives matching the spec
+4. Add bake entry in `TilePrefabBaker.BakeAllTilePrefabs()`
+5. Run **Dungeon VR → Bake Tile Prefabs** from the Unity menu
+6. Verify the `.prefab` appears in `Assets/Art/Prefabs/Tiles/`
+7. Update this document with the new entry
