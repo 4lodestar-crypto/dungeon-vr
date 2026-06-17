@@ -4,6 +4,7 @@ using UnityEngine;
 using DungeonVR.Shared;
 using DungeonVR.Shared.Data;
 using DungeonVR.Shared.Enums;
+using DungeonVR.Level.Data;
 using DungeonVR.Level.Interfaces;
 using DungeonVR.Level.Logic;
 

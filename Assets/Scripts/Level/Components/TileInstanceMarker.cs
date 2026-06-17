@@ -10,16 +10,16 @@ namespace DungeonVR.Level.Components
     /// </summary>
     public class TileInstanceMarker : MonoBehaviour
     {
-        [SerializeField, ReadOnly]
+        [SerializeField]
         private int _gridX;
 
-        [SerializeField, ReadOnly]
+        [SerializeField]
         private int _gridZ;
 
-        [SerializeField, ReadOnly]
+        [SerializeField]
         private TileType _tileType;
 
-        [SerializeField, ReadOnly]
+        [SerializeField]
         private WallFace _wallFaces;
 
         /// <summary>Grid X coordinate.</summary>
