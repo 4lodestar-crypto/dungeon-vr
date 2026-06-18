@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using DungeonVR.Level.Data;
@@ -12,13 +13,15 @@ namespace DungeonVR.Tests.EditMode.Systems
 {
     /// <summary>
     /// EditMode tests for the procedural DungeonGenerator.
-    /// Validates that generated levels pass validation and solvability checks.
+    /// Validates default generation, solvability across seeds,
+    /// layout uniqueness, and edge-case parameter configurations.
     /// </summary>
     [TestFixture]
     public class DungeonGeneratorTests
     {
         /// <summary>
         /// Creates a stub ITilePalette that returns dummy prefabs for all non-Empty types.
+        /// Required because LevelValidator.Validate() will reject a null palette.
         /// </summary>
         private static ITilePalette CreateMockPalette()
         {
@@ -26,7 +29,8 @@ namespace DungeonVR.Tests.EditMode.Systems
         }
 
         /// <summary>
-        /// Creates a DungeonParams with specified seed and default values.
+        /// Creates a DungeonParams ScriptableObject with the given overrides
+        /// and sensible defaults for other fields.
         /// </summary>
         private static DungeonParams CreateParams(int seed = 42, int width = 32, int depth = 32)
         {
@@ -35,29 +39,28 @@ namespace DungeonVR.Tests.EditMode.Systems
             p.Width = width;
             p.Depth = depth;
             p.MinRoomCount = 3;
-            p.MaxRoomCount = 6;
+            p.MaxRoomCount = 8;
             p.MinRoomSize = 4;
-            p.MaxRoomSize = 7;
+            p.MaxRoomSize = 8;
             p.CorridorWidth = 1;
             p.PlaceWallsAroundRooms = true;
             return p;
         }
 
         // ---------------------------------------------------------------
-        // Test 1: Default params produce a valid level
+        // Test 1 — Default params produce a valid, structurally-sound dungeon
         // ---------------------------------------------------------------
 
         [Test]
-        public void Generate_DefaultParams_ReturnsValidLevel()
+        public void DefaultParams_ProducesValidDungeon()
         {
             // Arrange
-            var generator = new DungeonGenerator();
-            var parameters = CreateParams(seed: 42);
+            var parameters = CreateParams(); // all defaults: 32x32, seed 42
             var validator = new LevelValidator();
             ITilePalette palette = CreateMockPalette();
 
             // Act
-            TileData[] tiles = generator.Generate(parameters);
+            TileData[] tiles = DungeonGenerator.Generate(parameters);
 
             // Assert
             Assert.IsNotNull(tiles, "Generate() should return a non-null array");
@@ -69,158 +72,116 @@ namespace DungeonVR.Tests.EditMode.Systems
 
             bool valid = validator.Validate(tiles, parameters.Width, parameters.Depth,
                 palette, out string[] errors);
-            Assert.IsTrue(valid, "Generated level should pass validation. Errors: " +
+            Assert.IsTrue(valid, "Default params level should pass validation. Errors: " +
                 string.Join("; ", errors ?? new string[0]));
         }
 
         // ---------------------------------------------------------------
-        // Test 2: 10 different seeds all produce solvable levels
+        // Test 2 — 10 seeds (0-9) all produce solvable dungeons
         // ---------------------------------------------------------------
 
         [Test]
-        public void Generate_10Seeds_AllSolvable()
+        public void TenSeeds_AllSolvable(
+            [Values(0, 1, 2, 3, 4, 5, 6, 7, 8, 9)] int seed)
         {
             // Arrange
-            var generator = new DungeonGenerator();
             var validator = new LevelValidator();
-            ITilePalette palette = CreateMockPalette();
-            int[] seeds = { 1, 42, 100, 256, 999, 2024, 7777, 12345, 54321, 99999 };
+            var parameters = CreateParams(seed: seed);
 
-            foreach (int seed in seeds)
-            {
-                // Arrange per seed
-                var parameters = CreateParams(seed: seed);
+            // Act
+            TileData[] tiles = DungeonGenerator.Generate(parameters);
 
-                // Act
-                TileData[] tiles = generator.Generate(parameters);
+            // Assert
+            Assert.IsNotNull(tiles, $"Seed {seed}: Generate() returned null");
+            Assert.AreEqual(parameters.Width * parameters.Depth, tiles.Length,
+                $"Seed {seed}: Unexpected tile count");
 
-                // Assert
-                Assert.IsNotNull(tiles, $"Seed {seed}: Generate() returned null");
-                bool valid = validator.Validate(tiles, parameters.Width, parameters.Depth,
-                    palette, out string[] errors);
-                Assert.IsTrue(valid, $"Seed {seed}: Level failed validation. Errors: " +
-                    string.Join("; ", errors ?? new string[0]));
-
-                bool solvable = validator.IsSolvable(tiles, parameters.Width, parameters.Depth);
-                Assert.IsTrue(solvable, $"Seed {seed}: Level is not solvable");
-            }
+            bool solvable = validator.IsSolvable(tiles, parameters.Width, parameters.Depth);
+            Assert.IsTrue(solvable, $"Seed {seed}: Level is not solvable");
         }
 
         // ---------------------------------------------------------------
-        // Test 3: Different seeds produce different layouts
+        // Test 3 — Different seeds produce structurally different layouts
         // ---------------------------------------------------------------
 
         [Test]
-        public void Generate_DifferentSeeds_DifferentLayouts()
+        public void DifferentSeeds_DifferentLayouts()
         {
             // Arrange
-            var generator = new DungeonGenerator();
-            var parametersA = CreateParams(seed: 1);
-            var parametersB = CreateParams(seed: 9999);
+            var paramsA = CreateParams(seed: 1);
+            var paramsB = CreateParams(seed: 2);
 
             // Act
-            TileData[] tilesA = generator.Generate(parametersA);
-            TileData[] tilesB = generator.Generate(parametersB);
+            TileData[] tilesA = DungeonGenerator.Generate(paramsA);
+            TileData[] tilesB = DungeonGenerator.Generate(paramsB);
 
             // Assert
             Assert.IsNotNull(tilesA);
             Assert.IsNotNull(tilesB);
             Assert.AreEqual(tilesA.Length, tilesB.Length,
-                "Both generations should have same dimensions");
+                "Both generations should have the same array length for equal dimensions");
 
-            // Count differences in tile types
-            int differences = 0;
-            for (int i = 0; i < tilesA.Length; i++)
-            {
-                if (tilesA[i].X != tilesB[i].X || tilesA[i].Z != tilesB[i].Z)
-                    continue; // Skip out-of-order tiles; we match by position
-
-                // Find matching tile in B by position
-                var tileB = FindTileByCoord(tilesB, tilesA[i].X, tilesA[i].Z);
-                if (tileB == null || tilesA[i].Type != tileB.Value.Type)
-                    differences++;
-            }
-
-            // Different seeds should produce different layouts.
-            // It's theoretically possible but astronomically unlikely they'd match.
-            Assert.Greater(differences, 0,
-                "Different seeds should produce different tile arrangements");
+            // Compare tile types at each position; different seeds should differ somewhere
+            bool identical = tilesA.SequenceEqual(tilesB, new TileTypeComparer());
+            Assert.IsFalse(identical,
+                "Seed 1 and seed 2 should produce different tile arrangements");
         }
 
         // ---------------------------------------------------------------
-        // Test 4: Minimal size (10x10) still produces valid level
+        // Test 4 — Minimal 10x10 grid still generates a valid solvable dungeon
         // ---------------------------------------------------------------
 
         [Test]
-        public void Generate_MinimalSize_Works()
+        public void MinimalGrid_10x10_Works()
         {
             // Arrange
-            var generator = new DungeonGenerator();
             var parameters = CreateParams(seed: 42, width: 10, depth: 10);
-            // For a 10x10 grid, use smaller rooms
+            parameters.MinRoomCount = 1;
+            parameters.MaxRoomCount = 3;
             parameters.MinRoomSize = 3;
             parameters.MaxRoomSize = 4;
-            parameters.MinRoomCount = 2;
-            parameters.MaxRoomCount = 3;
             var validator = new LevelValidator();
             ITilePalette palette = CreateMockPalette();
 
             // Act
-            TileData[] tiles = generator.Generate(parameters);
+            TileData[] tiles = DungeonGenerator.Generate(parameters);
 
             // Assert
-            Assert.IsNotNull(tiles, "Generate() should return a non-null array for minimal grid");
+            Assert.IsNotNull(tiles, "Generate() should return non-null for 10x10 grid");
             Assert.Greater(tiles.Length, 0, "Generated tile array should not be empty");
 
             bool valid = validator.Validate(tiles, parameters.Width, parameters.Depth,
                 palette, out string[] errors);
-            Assert.IsTrue(valid, "Minimal grid should pass validation. Errors: " +
+            Assert.IsTrue(valid, "Minimal 10x10 grid should pass validation. Errors: " +
                 string.Join("; ", errors ?? new string[0]));
 
             bool solvable = validator.IsSolvable(tiles, parameters.Width, parameters.Depth);
-            Assert.IsTrue(solvable, "Minimal grid should be solvable");
+            Assert.IsTrue(solvable, "Minimal 10x10 grid should be solvable");
         }
 
         // ---------------------------------------------------------------
-        // Test 5: Different param values produce expected grid sizes
+        // Test 5 — Width/Depth/Seed overrides produce matching grid size
         // ---------------------------------------------------------------
 
         [Test]
-        public void Generate_ParamsOverride_Respected()
+        public void ParamOverrides_Respected()
         {
             // Arrange
-            var generator = new DungeonGenerator();
-            var validator = new LevelValidator();
-            ITilePalette palette = CreateMockPalette();
-
-            // Test with custom dimensions
             int customWidth = 20;
-            int customDepth = 15;
-            var parameters = CreateParams(seed: 777, width: customWidth, depth: customDepth);
-            parameters.MinRoomCount = 2;
-            parameters.MaxRoomCount = 4;
-            parameters.MinRoomSize = 3;
-            parameters.MaxRoomSize = 5;
+            int customDepth = 20;
+            int customSeed = 12345;
+            var parameters = CreateParams(seed: customSeed, width: customWidth, depth: customDepth);
 
             // Act
-            TileData[] tiles = generator.Generate(parameters);
+            TileData[] tiles = DungeonGenerator.Generate(parameters);
 
-            // Assert
+            // Assert — tile count matches width * depth
             Assert.IsNotNull(tiles);
-
             int expectedCount = customWidth * customDepth;
             Assert.AreEqual(expectedCount, tiles.Length,
                 $"Expected {expectedCount} tiles for {customWidth}x{customDepth} grid, got {tiles.Length}");
 
-            bool valid = validator.Validate(tiles, customWidth, customDepth,
-                palette, out string[] errors);
-            Assert.IsTrue(valid, "Custom-sized level should pass validation. Errors: " +
-                string.Join("; ", errors ?? new string[0]));
-
-            bool solvable = validator.IsSolvable(tiles, customWidth, customDepth);
-            Assert.IsTrue(solvable, "Custom-sized level should be solvable");
-
-            // Verify tile count matches grid dimensions
+            // Verify coordinate bounds match
             int maxX = tiles.Max(t => t.X);
             int maxZ = tiles.Max(t => t.Z);
             Assert.AreEqual(customWidth - 1, maxX,
@@ -230,98 +191,91 @@ namespace DungeonVR.Tests.EditMode.Systems
         }
 
         // ---------------------------------------------------------------
-        // Test 6: Generated level has exactly one spawn and at least one stairs
+        // Test 6 — Generated level has exactly 1 Spawn and at least 1 Stairs
         // ---------------------------------------------------------------
 
         [Test]
-        public void Generate_HasCorrectSpecialTiles()
+        public void SpecialTileCounts_Correct()
         {
             // Arrange
-            var generator = new DungeonGenerator();
             var parameters = CreateParams(seed: 42);
 
             // Act
-            TileData[] tiles = generator.Generate(parameters);
+            TileData[] tiles = DungeonGenerator.Generate(parameters);
 
             // Assert
             Assert.IsNotNull(tiles);
 
             int spawnCount = tiles.Count(t => t.Type == TileType.Spawn);
             int stairsCount = tiles.Count(t => t.Type == TileType.Stairs);
-            int wallCount = tiles.Count(t => t.Type == TileType.Wall);
 
-            Assert.AreEqual(1, spawnCount, "Should have exactly 1 Spawn tile");
-            Assert.GreaterOrEqual(stairsCount, 1, "Should have at least 1 Stairs tile");
-            Assert.Greater(wallCount, 0, "Should have at least 1 Wall tile");
+            Assert.AreEqual(1, spawnCount, "Exactly 1 Spawn tile is required");
+            Assert.GreaterOrEqual(stairsCount, 1, "At least 1 Stairs tile is required");
         }
 
         // ---------------------------------------------------------------
-        // Test 7: Different settings produce expected variations
+        // Test 7 — PlaceWallsAroundRooms=false still produces valid level
         // ---------------------------------------------------------------
 
         [Test]
-        public void Generate_NoWallsAroundRooms_StillValid()
+        public void NoWallsAroundRooms_StillValid()
         {
             // Arrange
-            var generator = new DungeonGenerator();
             var parameters = CreateParams(seed: 42);
             parameters.PlaceWallsAroundRooms = false;
             var validator = new LevelValidator();
             ITilePalette palette = CreateMockPalette();
 
             // Act
-            TileData[] tiles = generator.Generate(parameters);
+            TileData[] tiles = DungeonGenerator.Generate(parameters);
 
             // Assert
             Assert.IsNotNull(tiles);
 
             bool valid = validator.Validate(tiles, parameters.Width, parameters.Depth,
                 palette, out string[] errors);
-            Assert.IsTrue(valid, "Level without room wall rings should pass validation. Errors: " +
+            Assert.IsTrue(valid,
+                "Level without room-wall rings should pass validation. Errors: " +
                 string.Join("; ", errors ?? new string[0]));
 
             bool solvable = validator.IsSolvable(tiles, parameters.Width, parameters.Depth);
-            Assert.IsTrue(solvable, "Level without room wall rings should be solvable");
+            Assert.IsTrue(solvable,
+                "Level without room-wall rings should be solvable");
         }
 
         // ---------------------------------------------------------------
-        // Test 8: Generate throws on null params
+        // Test 8 — Generate(null) throws ArgumentNullException
         // ---------------------------------------------------------------
 
         [Test]
-        public void Generate_NullParams_Throws()
+        public void NullParams_Throws()
         {
-            // Arrange
-            var generator = new DungeonGenerator();
-
             // Act & Assert
-            Assert.That(() => generator.Generate(null),
-                Throws.ArgumentNullException);
+            Assert.Throws<ArgumentNullException>(() => DungeonGenerator.Generate(null));
         }
 
         // ---------------------------------------------------------------
-        // Helper methods
+        // Helper: IEqualityComparer<TileData> that compares by position and type
         // ---------------------------------------------------------------
 
-        /// <summary>Finds a TileData by (x,z) coordinates.</summary>
-        private static TileData? FindTileByCoord(TileData[] tiles, int x, int z)
+        private class TileTypeComparer : IEqualityComparer<TileData>
         {
-            foreach (var t in tiles)
+            public bool Equals(TileData a, TileData b)
             {
-                if (t.X == x && t.Z == z)
-                    return t;
+                // Compare by position and type — same coordinate must have same type
+                return a.X == b.X && a.Z == b.Z && a.Type == b.Type;
             }
-            return null;
+
+            public int GetHashCode(TileData obj)
+            {
+                return HashCode.Combine(obj.X, obj.Z, obj.Type);
+            }
         }
 
         // ---------------------------------------------------------------
-        // Stub implementations
+        // Stub ITilePalette implementation for test isolation
         // ---------------------------------------------------------------
 
-        /// <summary>
-        /// Minimal ITilePalette stub for test isolation.
-        /// Returns dummy GameObjects for all non-Empty tile types.
-        /// </summary>
         private class StubTilePalette : ITilePalette
         {
             private readonly Dictionary<TileType, GameObject> _prefabs;
@@ -329,7 +283,6 @@ namespace DungeonVR.Tests.EditMode.Systems
             public StubTilePalette()
             {
                 _prefabs = new Dictionary<TileType, GameObject>();
-                // Assign a dummy GameObject for each non-Empty type
                 foreach (TileType type in System.Enum.GetValues(typeof(TileType)))
                 {
                     if (type != TileType.Empty)

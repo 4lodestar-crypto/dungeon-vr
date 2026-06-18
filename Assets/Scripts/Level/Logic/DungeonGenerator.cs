@@ -1,11 +1,11 @@
 using System;
 using System.Collections.Generic;
 using UnityEngine;
+using DungeonVR.Level.Components;
 using DungeonVR.Level.Data;
+using DungeonVR.Level.Interfaces;
 using DungeonVR.Shared.Data;
 using DungeonVR.Shared.Enums;
-using DungeonVR.Level.Components;
-using DungeonVR.Level.Interfaces;
 using Random = System.Random;
 
 namespace DungeonVR.Level.Logic
@@ -13,19 +13,24 @@ namespace DungeonVR.Level.Logic
     /// <summary>
     /// Procedural dungeon generator producing TileData arrays.
     /// Algorithm: rooms (random size/position) + L-shaped corridors.
-    /// Guarantees connectivity via BFS flood fill with automatic retry.
+    /// Guarantees connectivity via BFS flood fill with automatic corridor carving.
     /// </summary>
-    public class DungeonGenerator
+    public static class DungeonGenerator
     {
         /// <summary>
-        /// Maximum attempts to generate a valid, solvable layout before giving up.
+        /// Maximum attempts to generate a valid layout before giving up.
         /// </summary>
-        private const int MaxRetries = 50;
+        private const int MaxGenerationAttempts = 50;
 
         /// <summary>
         /// Maximum placement attempts per room.
         /// </summary>
         private const int MaxRoomPlacementAttempts = 200;
+
+        /// <summary>
+        /// Maximum attempts to carve connectivity corridors during BFS fixing.
+        /// </summary>
+        private const int MaxConnectivityFixes = 100;
 
         /// <summary>
         /// Represents a placed room rectangle.
@@ -74,42 +79,160 @@ namespace DungeonVR.Level.Logic
             }
         }
 
+        // ------------------------------------------------------------------
+        // T11: Public API
+        // ------------------------------------------------------------------
+
         /// <summary>
         /// Generate a complete dungeon layout as a TileData array.
         /// Uses the provided parameters for all configuration.
         /// Returns a validated, solvable tile array.
         /// </summary>
-        public TileData[] Generate(DungeonParams parameters)
+        public static TileData[] Generate(DungeonParams p)
         {
-            if (parameters == null)
-                throw new ArgumentNullException(nameof(parameters));
+            if (p == null)
+                throw new ArgumentNullException(nameof(p));
 
-            parameters.Clamp();
+            p.Clamp();
 
-            for (int attempt = 0; attempt < MaxRetries; attempt++)
+            for (int attempt = 0; attempt < MaxGenerationAttempts; attempt++)
             {
-                int seed = parameters.Seed + attempt * 31337;
+                int seed = p.Seed + attempt * 31337;
                 var rng = new Random(seed);
 
-                TileData[] result = TryGenerate(parameters, rng);
+                TileData[] result = TryGenerate(p, rng);
                 if (result == null)
                     continue;
 
-                // Check solvability (connectivity via BFS)
-                var validator = new LevelValidator();
-                if (validator.IsSolvable(result, parameters.Width, parameters.Depth))
+                // Ensure connectivity via BFS + corridor carving
+                if (EnsureConnectivity(result, p.Width, p.Depth, rng))
                 {
-                    return result;
+                    // Rebuild TileData array with correct WallFaces after connectivity fixes
+                    return RebuildWithWallFaces(result, p.Width, p.Depth);
                 }
             }
 
             // Fallback: if all retries failed, generate a minimal solvable 3x3 box
-            return GenerateFallback(parameters);
+            return GenerateFallback(p);
         }
 
         /// <summary>
+        /// Generate a dungeon and load it directly into the scene via LevelLoader.
+        /// Integrates with LevelValidator, GridService, and LevelLoader.
+        /// Returns true on success with error=null, false with error message on failure.
+        /// </summary>
+        public static bool GenerateAndLoad(DungeonParams p, Transform tileRoot, ITilePalette palette, out string error)
+        {
+            error = null;
+
+            if (p == null)
+            {
+                error = "DungeonParams is null.";
+                return false;
+            }
+            if (tileRoot == null)
+            {
+                error = "Tile root transform is null.";
+                return false;
+            }
+            if (palette == null)
+            {
+                error = "Tile palette is null.";
+                return false;
+            }
+
+            TileData[] tiles;
+            try
+            {
+                tiles = Generate(p);
+            }
+            catch (Exception ex)
+            {
+                error = $"Generation failed: {ex.Message}";
+                return false;
+            }
+
+            // Validate with a LevelValidator instance
+            var validator = new LevelValidator();
+            if (!validator.Validate(tiles, p.Width, p.Depth, palette, out string[] validationErrors))
+            {
+                error = "Level validation failed: " + string.Join("; ", validationErrors);
+                return false;
+            }
+
+            // Check solvability
+            if (!validator.IsSolvable(tiles, p.Width, p.Depth))
+            {
+                error = "Generated level is not solvable (Stairs unreachable from Spawn).";
+                return false;
+            }
+
+            // Load via LevelLoader (handles GridService registration internally)
+            var loaderObj = new GameObject("DungeonGenerator_Loader");
+            var loader = loaderObj.AddComponent<LevelLoader>();
+            bool loaded = loader.LoadFromData(tiles, p.Width, p.Depth, palette, tileRoot);
+
+            if (!loaded)
+            {
+                error = "LevelLoader.LoadFromData failed.";
+                Object.DestroyImmediate(loaderObj);
+                return false;
+            }
+
+            return true;
+        }
+
+        /// <summary>
+        /// Generate a dungeon and run LevelValidator on the output.
+        /// Returns true if validation passes.
+        /// </summary>
+        public static bool ValidateGenerated(DungeonParams p, out List<string> errors)
+        {
+            errors = new List<string>();
+
+            if (p == null)
+            {
+                errors.Add("DungeonParams is null.");
+                return false;
+            }
+
+            try
+            {
+                TileData[] tiles = Generate(p);
+
+                var validator = new LevelValidator();
+                string[] validationErrors;
+                bool valid = validator.Validate(tiles, p.Width, p.Depth, null, out validationErrors);
+
+                errors.AddRange(validationErrors);
+
+                // Also check solvability if basic validation passes
+                if (valid)
+                {
+                    bool solvable = validator.IsSolvable(tiles, p.Width, p.Depth);
+                    if (!solvable)
+                    {
+                        errors.Add("Generated level is not solvable (Stairs unreachable from Spawn).");
+                        return false;
+                    }
+                }
+
+                return valid;
+            }
+            catch (Exception ex)
+            {
+                errors.Add($"Generation exception: {ex.Message}");
+                return false;
+            }
+        }
+
+        // ------------------------------------------------------------------
+        // T11: Internal generation
+        // ------------------------------------------------------------------
+
+        /// <summary>
         /// Single attempt at generating a dungeon layout.
-        /// Returns null on failure (unable to place all rooms).
+        /// Returns null on failure (unable to place any rooms).
         /// </summary>
         private static TileData[] TryGenerate(DungeonParams parameters, Random rng)
         {
@@ -122,7 +245,7 @@ namespace DungeonVR.Level.Logic
                 for (int z = 0; z < depth; z++)
                     grid[x, z] = TileType.Floor;
 
-            // Step 2: Place perimeter walls
+            // Step 2: Place perimeter walls (outer ring)
             for (int x = 0; x < width; x++)
             {
                 grid[x, 0] = TileType.Wall;
@@ -134,7 +257,7 @@ namespace DungeonVR.Level.Logic
                 grid[width - 1, z] = TileType.Wall;
             }
 
-            // Step 3: Generate rooms
+            // Step 3: Generate rooms (leave 1-tile border for perimeter wall)
             int targetRoomCount = rng.Next(parameters.MinRoomCount, parameters.MaxRoomCount + 1);
             List<RoomRect> rooms = new List<RoomRect>(targetRoomCount);
 
@@ -143,7 +266,7 @@ namespace DungeonVR.Level.Logic
                 int rw = rng.Next(parameters.MinRoomSize, parameters.MaxRoomSize + 1);
                 int rh = rng.Next(parameters.MinRoomSize, parameters.MaxRoomSize + 1);
 
-                // Position rooms with margin from perimeter walls
+                // Position rooms with margin from perimeter walls (leave 1-tile border)
                 int rx = rng.Next(2, width - rw - 2);
                 int rz = rng.Next(2, depth - rh - 2);
 
@@ -165,7 +288,7 @@ namespace DungeonVR.Level.Logic
 
                 rooms.Add(newRoom);
 
-                // Mark room interior as Floor (already Floor by default, but be explicit)
+                // Mark room interior as Floor
                 for (int x = rx; x < rx + rw; x++)
                     for (int z = rz; z < rz + rh; z++)
                         grid[x, z] = TileType.Floor;
@@ -175,7 +298,7 @@ namespace DungeonVR.Level.Logic
             if (rooms.Count < 1)
                 return null;
 
-            // Step 4: Place interior walls around rooms
+            // Step 4: Place wall rings around rooms if requested
             if (parameters.PlaceWallsAroundRooms)
             {
                 foreach (var room in rooms)
@@ -190,35 +313,211 @@ namespace DungeonVR.Level.Logic
                 CarveCorridor(grid, rooms[i], rooms[i + 1], rooms, parameters.CorridorWidth, rng, width, depth);
             }
 
-            // Step 6: Place Spawn at first room's center
+            // Step 6: Place Spawn at first room's center (tag "Spawn")
             RoomRect firstRoom = rooms[0];
-            int spawnTileX = firstRoom.CenterX;
-            int spawnTileZ = firstRoom.CenterZ;
-            // Clamp to room interior
-            spawnTileX = Mathf.Clamp(spawnTileX, firstRoom.X, firstRoom.X + firstRoom.Width - 1);
-            spawnTileZ = Mathf.Clamp(spawnTileZ, firstRoom.Z, firstRoom.Z + firstRoom.Height - 1);
+            int spawnTileX = Mathf.Clamp(firstRoom.CenterX, firstRoom.X, firstRoom.X + firstRoom.Width - 1);
+            int spawnTileZ = Mathf.Clamp(firstRoom.CenterZ, firstRoom.Z, firstRoom.Z + firstRoom.Height - 1);
             grid[spawnTileX, spawnTileZ] = TileType.Spawn;
 
-            // Step 7: Place Stairs in last room, at edge farthest from spawn
+            // Step 7: Place Stairs at last room's edge tile farthest from Spawn (Manhattan distance), tag "Stairs"
             RoomRect lastRoom = rooms[rooms.Count - 1];
             TileCoord stairsPos = FindFarthestEdgeTile(lastRoom, spawnTileX, spawnTileZ);
             grid[stairsPos.X, stairsPos.Z] = TileType.Stairs;
 
-            // Step 8: Compute WallFace values
+            // Step 8: Compute WallFace values (T12)
             WallFace[,] wallFaces = ComputeWallFaces(grid, width, depth);
 
-            // Step 9: Build TileData array
+            // Step 9: Build TileData array with tags
             List<TileData> tileList = new List<TileData>(width * depth);
             for (int x = 0; x < width; x++)
             {
                 for (int z = 0; z < depth; z++)
                 {
-                    tileList.Add(new TileData(x, z, grid[x, z], wallFaces[x, z]));
+                    TileData tile = new TileData(x, z, grid[x, z], wallFaces[x, z]);
+
+                    // Assign tags
+                    if (x == spawnTileX && z == spawnTileZ && grid[x, z] == TileType.Spawn)
+                    {
+                        tile.Tags = new[] { "Spawn" };
+                    }
+                    else if (x == stairsPos.X && z == stairsPos.Z && grid[x, z] == TileType.Stairs)
+                    {
+                        tile.Tags = new[] { "Stairs" };
+                    }
+
+                    tileList.Add(tile);
                 }
             }
 
             return tileList.ToArray();
         }
+
+        // ------------------------------------------------------------------
+        // T11: Connectivity guarantee via BFS + corridor carving
+        // ------------------------------------------------------------------
+
+        /// <summary>
+        /// Ensures a valid path from Spawn to Stairs by performing BFS flood fill
+        /// and carving additional L-shaped corridors between disconnected regions.
+        /// </summary>
+        private static bool EnsureConnectivity(TileData[] tiles, int width, int depth, Random rng)
+        {
+            for (int fixAttempt = 0; fixAttempt < MaxConnectivityFixes; fixAttempt++)
+            {
+                // Build a lookup map and find Spawn and Stairs positions
+                Dictionary<(int, int), TileData> tileMap = new Dictionary<(int, int), TileData>();
+                TileCoord? spawnPos = null;
+                TileCoord? stairsPos = null;
+
+                foreach (TileData tile in tiles)
+                {
+                    var key = (tile.X, tile.Z);
+                    tileMap[key] = tile;
+
+                    if (tile.Type == TileType.Spawn)
+                        spawnPos = new TileCoord(tile.X, tile.Z);
+
+                    if (tile.Type == TileType.Stairs)
+                        stairsPos = new TileCoord(tile.X, tile.Z);
+                }
+
+                if (spawnPos == null || stairsPos == null)
+                    return false;
+
+                // BFS flood fill from Spawn
+                HashSet<(int, int)> visited = new HashSet<(int, int)>();
+                Queue<(int, int)> queue = new Queue<(int, int)>();
+                queue.Enqueue((spawnPos.Value.X, spawnPos.Value.Z));
+                visited.Add((spawnPos.Value.X, spawnPos.Value.Z));
+
+                int[] dx = { 0, 0, 1, -1 };
+                int[] dz = { 1, -1, 0, 0 };
+
+                while (queue.Count > 0)
+                {
+                    var (cx, cz) = queue.Dequeue();
+
+                    for (int i = 0; i < 4; i++)
+                    {
+                        int nx = cx + dx[i];
+                        int nz = cz + dz[i];
+
+                        var neighborKey = (nx, nz);
+
+                        if (visited.Contains(neighborKey))
+                            continue;
+
+                        if (nx < 0 || nx >= width || nz < 0 || nz >= depth)
+                            continue;
+
+                        if (tileMap.TryGetValue(neighborKey, out TileData neighbor))
+                        {
+                            if (IsWalkableForBFS(neighbor))
+                            {
+                                visited.Add(neighborKey);
+                                queue.Enqueue((nx, nz));
+                            }
+                        }
+                    }
+                }
+
+                // Check if Stairs is reachable
+                if (visited.Contains((stairsPos.Value.X, stairsPos.Value.Z)))
+                    return true;
+
+                // Stairs unreachable — find closest unvisited walkable tile to Spawn
+                // and carve a corridor toward it
+                TileCoord? closestUnvisited = null;
+                int closestDist = int.MaxValue;
+
+                foreach (TileData tile in tiles)
+                {
+                    var key = (tile.X, tile.Z);
+                    if (visited.Contains(key))
+                        continue;
+
+                    if (!IsWalkableForBFS(tile))
+                        continue;
+
+                    int dist = Mathf.Abs(tile.X - spawnPos.Value.X) + Mathf.Abs(tile.Z - spawnPos.Value.Z);
+                    if (dist < closestDist)
+                    {
+                        closestDist = dist;
+                        closestUnvisited = new TileCoord(tile.X, tile.Z);
+                    }
+                }
+
+                if (closestUnvisited == null)
+                    return false;
+
+                // Carve a corridor from a random visited tile near the frontier to the unvisited tile
+                CarveConnectivityCorridor(tiles, spawnPos.Value, closestUnvisited.Value, width, depth, rng);
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Carves an L-shaped corridor between two positions during connectivity fixing.
+        /// Modifies the tile array in-place.
+        /// </summary>
+        private static void CarveConnectivityCorridor(TileData[] tiles, TileCoord from, TileCoord to,
+            int width, int depth, Random rng)
+        {
+            // Determine the corridor path (L-shaped)
+            HashSet<(int, int)> corridorTiles = new HashSet<(int, int)>();
+            bool horizontalFirst = rng.Next(2) == 0;
+
+            if (horizontalFirst)
+            {
+                int minX = Mathf.Min(from.X, to.X);
+                int maxX = Mathf.Max(from.X, to.X);
+                for (int x = minX; x <= maxX; x++)
+                    corridorTiles.Add((x, from.Z));
+                int minZ = Mathf.Min(from.Z, to.Z);
+                int maxZ = Mathf.Max(from.Z, to.Z);
+                for (int z = minZ; z <= maxZ; z++)
+                    corridorTiles.Add((to.X, z));
+            }
+            else
+            {
+                int minZ = Mathf.Min(from.Z, to.Z);
+                int maxZ = Mathf.Max(from.Z, to.Z);
+                for (int z = minZ; z <= maxZ; z++)
+                    corridorTiles.Add((from.X, z));
+                int minX = Mathf.Min(from.X, to.X);
+                int maxX = Mathf.Max(from.X, to.X);
+                for (int x = minX; x <= maxX; x++)
+                    corridorTiles.Add((x, to.Z));
+            }
+
+            // Apply corridor tiles to the array
+            for (int i = 0; i < tiles.Length; i++)
+            {
+                var key = (tiles[i].X, tiles[i].Z);
+                if (corridorTiles.Contains(key))
+                {
+                    // Don't overwrite special tiles
+                    if (tiles[i].Type != TileType.Spawn && tiles[i].Type != TileType.Stairs)
+                    {
+                        tiles[i] = new TileData(tiles[i].X, tiles[i].Z, TileType.Floor, WallFace.None, tiles[i].FloorHeight);
+                    }
+                }
+            }
+        }
+
+        /// <summary>
+        /// Determines if a tile is walkable for BFS flood fill.
+        /// </summary>
+        private static bool IsWalkableForBFS(TileData tile)
+        {
+            return tile.Type != TileType.Wall &&
+                   tile.Type != TileType.Empty;
+        }
+
+        // ------------------------------------------------------------------
+        // T11: Room walls
+        // ------------------------------------------------------------------
 
         /// <summary>
         /// Places a 1-tile-thick ring of Wall tiles around a room.
@@ -266,6 +565,10 @@ namespace DungeonVR.Level.Logic
             }
         }
 
+        // ------------------------------------------------------------------
+        // T11: Corridors
+        // ------------------------------------------------------------------
+
         /// <summary>
         /// Carves an L-shaped corridor from room A's center toward room B's center.
         /// Corridor tiles override walls but do not overlap room interiors.
@@ -273,16 +576,10 @@ namespace DungeonVR.Level.Logic
         private static void CarveCorridor(TileType[,] grid, RoomRect fromRoom, RoomRect toRoom,
             List<RoomRect> allRooms, int corridorWidth, Random rng, int width, int depth)
         {
-            int ax = fromRoom.CenterX;
-            int az = fromRoom.CenterZ;
-            int bx = toRoom.CenterX;
-            int bz = toRoom.CenterZ;
-
-            // Clamp centers to room interiors
-            ax = Mathf.Clamp(ax, fromRoom.X, fromRoom.X + fromRoom.Width - 1);
-            az = Mathf.Clamp(az, fromRoom.Z, fromRoom.Z + fromRoom.Height - 1);
-            bx = Mathf.Clamp(bx, toRoom.X, toRoom.X + toRoom.Width - 1);
-            bz = Mathf.Clamp(bz, toRoom.Z, toRoom.Z + toRoom.Height - 1);
+            int ax = Mathf.Clamp(fromRoom.CenterX, fromRoom.X, fromRoom.X + fromRoom.Width - 1);
+            int az = Mathf.Clamp(fromRoom.CenterZ, fromRoom.Z, fromRoom.Z + fromRoom.Height - 1);
+            int bx = Mathf.Clamp(toRoom.CenterX, toRoom.X, toRoom.X + toRoom.Width - 1);
+            int bz = Mathf.Clamp(toRoom.CenterZ, toRoom.Z, toRoom.Z + toRoom.Height - 1);
 
             // Randomly choose L-shape orientation
             bool horizontalFirst = rng.Next(2) == 0;
@@ -354,13 +651,14 @@ namespace DungeonVR.Level.Logic
             {
                 for (int dz = -half; dz < width - half; dz++)
                 {
-                    // For corridorWidth=1, half=0, adds just (x,z)
-                    // For corridorWidth=2, adds a 2x2 block
-                    // For corridorWidth=3, adds a 3x3 block
                     tiles.Add((x + dx, z + dz));
                 }
             }
         }
+
+        // ------------------------------------------------------------------
+        // T11: Stairs placement
+        // ------------------------------------------------------------------
 
         /// <summary>
         /// Finds the edge tile in a room that is farthest (Manhattan distance) from (fromX, fromZ).
@@ -371,7 +669,6 @@ namespace DungeonVR.Level.Logic
             int bestZ = room.CenterZ;
             int bestDist = -1;
 
-            // Consider all edge tiles of the room
             // Top and bottom edges
             for (int x = room.X; x < room.X + room.Width; x++)
             {
@@ -415,10 +712,18 @@ namespace DungeonVR.Level.Logic
             return new TileCoord(bestX, bestZ);
         }
 
+        // ------------------------------------------------------------------
+        // T12: WallFace computation
+        // ------------------------------------------------------------------
+
         /// <summary>
-        /// Computes WallFace flags for all walkable tiles adjacent to
-        /// non-walkable tiles (Wall, Empty, or out-of-bounds).
-        /// Also computes faces for Wall tiles adjacent to walkable tiles.
+        /// Computes WallFace flags for all tiles based on adjacency.
+        /// 
+        /// Rules:
+        /// - Floor tiles adjacent to a Wall tile get WallFace pointing toward that wall.
+        /// - Wall tiles adjacent to a Floor tile get WallFace pointing toward that floor (bidirectional).
+        /// - Wall tiles on the perimeter get WallFace pointing inward (toward floor).
+        /// - No wall faces between two walls or two floors.
         /// </summary>
         private static WallFace[,] ComputeWallFaces(TileType[,] grid, int width, int depth)
         {
@@ -435,7 +740,7 @@ namespace DungeonVR.Level.Logic
                 {
                     TileType currentType = grid[x, z];
 
-                    // Skip Empty tiles (shouldn't exist in our grid, but safety check)
+                    // Skip Empty tiles
                     if (currentType == TileType.Empty)
                         continue;
 
@@ -446,26 +751,33 @@ namespace DungeonVR.Level.Logic
                         int nx = x + dx[d];
                         int nz = z + dz[d];
 
-                        // Out of bounds → add wall face
+                        // Out of bounds → add wall face (for perimeter walls, face inward)
                         if (nx < 0 || nx >= width || nz < 0 || nz >= depth)
                         {
-                            face |= dirFlags[d];
+                            // Only add wall face if current tile is walkable (faces outward at boundary)
+                            // or if it's a wall (faces inward, away from boundary)
+                            if (IsWalkableType(currentType))
+                            {
+                                // Floor at boundary → face outward (toward missing/world edge)
+                                // This should rarely happen with perimeter walls, but handle it
+                                face |= dirFlags[d];
+                            }
                             continue;
                         }
 
                         TileType neighborType = grid[nx, nz];
 
-                        // If current tile is walkable and neighbor blocks → face
-                        // If current tile is Wall and neighbor is walkable → face (wall surface)
                         bool currentIsWalkable = IsWalkableType(currentType);
                         bool neighborIsWalkable = IsWalkableType(neighborType);
 
                         if (currentIsWalkable && !neighborIsWalkable)
                         {
+                            // Floor adjacent to Wall → add face toward wall
                             face |= dirFlags[d];
                         }
                         else if (!currentIsWalkable && neighborIsWalkable)
                         {
+                            // Wall adjacent to Floor → add face toward floor (bidirectional)
                             face |= dirFlags[d];
                         }
                         // Both walkable or both blocked → no face needed
@@ -487,17 +799,52 @@ namespace DungeonVR.Level.Logic
         }
 
         /// <summary>
+        /// Rebuilds a TileData array from existing tiles, recomputing all WallFaces
+        /// from a reconstructed grid. Used after connectivity-fixing corridor carving
+        /// to ensure correct WallFace values on newly carved tiles.
+        /// </summary>
+        private static TileData[] RebuildWithWallFaces(TileData[] source, int width, int depth)
+        {
+            // Reconstruct TileType grid from source
+            TileType[,] grid = new TileType[width, depth];
+            for (int i = 0; i < source.Length; i++)
+            {
+                int x = source[i].X;
+                int z = source[i].Z;
+                if (x >= 0 && x < width && z >= 0 && z < depth)
+                    grid[x, z] = source[i].Type;
+            }
+
+            // Recompute WallFaces from clean grid
+            WallFace[,] wallFaces = ComputeWallFaces(grid, width, depth);
+
+            // Rebuild TileData array preserving tags and metadata
+            TileData[] result = new TileData[source.Length];
+            for (int i = 0; i < source.Length; i++)
+            {
+                int x = source[i].X;
+                int z = source[i].Z;
+                TileData tile = new TileData(x, z, source[i].Type, wallFaces[x, z], source[i].FloorHeight);
+                tile.Tags = source[i].Tags;
+                tile.Metadata = source[i].Metadata;
+                result[i] = tile;
+            }
+
+            return result;
+        }
+
+        // ------------------------------------------------------------------
+        // T11: Fallback generation
+        // ------------------------------------------------------------------
+
+        /// <summary>
         /// Minimal fallback level when all generation attempts fail.
-        /// Creates a tiny 3x3 solvable layout: perimeter walls, spawn center, stairs at edge.
+        /// Creates a tiny 3-5 tile solvable layout: perimeter walls, spawn center, stairs at edge.
         /// </summary>
         private static TileData[] GenerateFallback(DungeonParams parameters)
         {
-            int w = Mathf.Max(3, parameters.Width);
-            int d = Mathf.Max(3, parameters.Depth);
-
-            // Fallback to a small guaranteed-solvable level
-            int fw = Mathf.Min(5, w);
-            int fd = Mathf.Min(5, d);
+            int fw = Mathf.Min(5, Mathf.Max(3, parameters.Width));
+            int fd = Mathf.Min(5, Mathf.Max(3, parameters.Depth));
 
             TileType[,] grid = new TileType[fw, fd];
             for (int x = 0; x < fw; x++)
@@ -516,8 +863,10 @@ namespace DungeonVR.Level.Logic
                 grid[fw - 1, z] = TileType.Wall;
             }
 
-            // Spawn in center, stairs at bottom-right interior
-            grid[fw / 2, fd / 2] = TileType.Spawn;
+            // Spawn in center, stairs at opposite edge
+            int spawnX = fw / 2;
+            int spawnZ = fd / 2;
+            grid[spawnX, spawnZ] = TileType.Spawn;
             grid[fw - 2, fd - 2] = TileType.Stairs;
 
             WallFace[,] faces = ComputeWallFaces(grid, fw, fd);
@@ -525,34 +874,19 @@ namespace DungeonVR.Level.Logic
             TileData[] result = new TileData[fw * fd];
             int idx = 0;
             for (int x = 0; x < fw; x++)
+            {
                 for (int z = 0; z < fd; z++)
-                    result[idx++] = new TileData(x, z, grid[x, z], faces[x, z]);
+                {
+                    TileData tile = new TileData(x, z, grid[x, z], faces[x, z]);
+                    if (x == spawnX && z == spawnZ)
+                        tile.Tags = new[] { "Spawn" };
+                    else if (x == fw - 2 && z == fd - 2 && grid[x, z] == TileType.Stairs)
+                        tile.Tags = new[] { "Stairs" };
+                    result[idx++] = tile;
+                }
+            }
 
             return result;
-        }
-
-        // ------------------------------------------------------------------
-        // T14: Integration convenience method
-        // ------------------------------------------------------------------
-
-        /// <summary>
-        /// Generates a dungeon and loads it via LevelLoader in a single coroutine-compatible step.
-        /// Returns true if loading succeeded.
-        /// </summary>
-        public bool GenerateAndLoad(LevelLoader loader, Transform tileRoot, DungeonParams parameters,
-            ITilePalette palette)
-        {
-            if (loader == null)
-                throw new ArgumentNullException(nameof(loader));
-            if (tileRoot == null)
-                throw new ArgumentNullException(nameof(tileRoot));
-            if (parameters == null)
-                throw new ArgumentNullException(nameof(parameters));
-            if (palette == null)
-                throw new ArgumentNullException(nameof(palette));
-
-            TileData[] tiles = Generate(parameters);
-            return loader.LoadFromData(tiles, parameters.Width, parameters.Depth, palette, tileRoot);
         }
     }
 }

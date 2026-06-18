@@ -5,7 +5,7 @@ namespace DungeonVR.Level.Data
     /// <summary>
     /// Configuration parameters for procedural dungeon generation.
     /// Can be used as a ScriptableObject asset (via CreateAssetMenu)
-    /// or constructed directly in code via CreateInstance.
+    /// or constructed in code via ScriptableObject.CreateInstance.
     /// </summary>
     [CreateAssetMenu(menuName = "DungeonVR/Dungeon Params")]
     public class DungeonParams : ScriptableObject
@@ -17,7 +17,7 @@ namespace DungeonVR.Level.Data
         [SerializeField, Tooltip("Grid width in tiles.")]
         private int _width = 32;
 
-        [SerializeField, Tooltip("Grid depth (height) in tiles.")]
+        [SerializeField, Tooltip("Grid depth (length) in tiles.")]
         private int _depth = 32;
 
         [Header("Room Generation")]
@@ -55,7 +55,7 @@ namespace DungeonVR.Level.Data
             set => _width = value;
         }
 
-        /// <summary>Grid depth (height) in tiles.</summary>
+        /// <summary>Grid depth (length) in tiles.</summary>
         public int Depth
         {
             get => _depth;
@@ -118,6 +118,15 @@ namespace DungeonVR.Level.Data
             _maxRoomSize = Mathf.Max(_minRoomSize, _maxRoomSize);
             _corridorWidth = Mathf.Max(1, _corridorWidth);
             return this;
+        }
+
+        /// <summary>
+        /// Create a default DungeonParams instance for code-based usage.
+        /// Equivalent to CreateInstance&lt;DungeonParams&gt;() with field defaults.
+        /// </summary>
+        public static DungeonParams CreateDefault()
+        {
+            return CreateInstance<DungeonParams>();
         }
 
         private void OnValidate()
