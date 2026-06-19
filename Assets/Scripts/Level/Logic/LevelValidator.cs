@@ -45,14 +45,10 @@ namespace DungeonVR.Level.Logic
                 errorList.Add($"Invalid grid dimensions: {width}x{depth}. Both must be positive.");
             }
 
-            // Check palette completeness
+            // Check palette completeness (skip if no palette provided — tiles-only validation)
             if (palette != null && !palette.IsComplete)
             {
                 errorList.Add("Tile palette is incomplete — some TileType values have no prefab assigned.");
-            }
-            else if (palette == null)
-            {
-                errorList.Add("Tile palette is null.");
             }
 
             // Track tile counts and coordinate uniqueness

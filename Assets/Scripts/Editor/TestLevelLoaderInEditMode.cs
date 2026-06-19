@@ -2,6 +2,7 @@ using UnityEngine;
 using UnityEditor;
 using DungeonVR.Level.Components;
 using DungeonVR.Level.Data;
+using DungeonVR.Shared.Enums;
 
 public static class TestLevelLoaderInEditMode
 {

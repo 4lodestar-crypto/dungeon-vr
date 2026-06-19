@@ -1,151 +1,120 @@
-using DungeonVR.Gameplay.Components;
-using DungeonVR.Gameplay.Logic;
-using DungeonVR.Shared;
 using UnityEngine;
 
 namespace DungeonVR.VR
 {
     /// <summary>
-    /// First-person camera that follows the champion's position and facing direction
-    /// with smooth interpolation. Supports mouse-look (right-button + drag) for
-    /// free vertical and horizontal glance without changing the snap-turn scheme.
-    ///
-    /// V0-EXCEPTION: reads GameLoopController.GameState.Champion directly;
-    /// server-layer state provider in V1.
-    /// V0-EXCEPTION: FindObjectOfType for GameLoopController; replace with DI in V1.
+    /// First-person camera controller for DungeonVR.
+    /// Reads mouse input to rotate the camera with configurable sensitivity
+    /// and clamped vertical rotation (~90 degrees).
+    /// Attach to the Main Camera GameObject.
     /// </summary>
-    [RequireComponent(typeof(Camera))]
     public class PlayerCameraController : MonoBehaviour
     {
-        // ------------------------------------------------------------------
-        //  Inspector tunables
-        // ------------------------------------------------------------------
+        [Header("Mouse Settings")]
+        [SerializeField]
+        [Tooltip("Horizontal mouse sensitivity multiplier.")]
+        private float mouseSensitivityX = 2.0f;
 
-        [Header("Smoothing")]
-        [SerializeField] private float _positionLerpSpeed = 10f;
-        [SerializeField] private float _rotationLerpSpeed = 10f;
+        [SerializeField]
+        [Tooltip("Vertical mouse sensitivity multiplier.")]
+        private float mouseSensitivityY = 2.0f;
 
-        [Header("Mouse Look")]
-        [SerializeField] private float _mouseSensitivity = 2f;
-        [SerializeField] private float _verticalClamp = 85f; // degrees from horizon
+        [Header("Rotation Limits")]
+        [SerializeField]
+        [Tooltip("Maximum upward look angle in degrees.")]
+        private float maxLookUp = 80f;
 
-        // ------------------------------------------------------------------
-        //  Private state
-        // ------------------------------------------------------------------
+        [SerializeField]
+        [Tooltip("Maximum downward look angle in degrees.")]
+        private float maxLookDown = 80f;
 
-        private Camera _camera;
-        private GameLoopController _gameLoopController;
+        [Header("Input")]
+        [SerializeField]
+        [Tooltip("Name of the horizontal mouse axis.")]
+        private string mouseXAxis = "Mouse X";
 
-        // Champion-facing-derived base rotation (snap-turn)
-        private Quaternion _targetBaseRotation;
+        [SerializeField]
+        [Tooltip("Name of the vertical mouse axis.")]
+        private string mouseYAxis = "Mouse Y";
 
-        // Mouse-look offset accumulated while right button is held
-        private float _mouseLookYaw;   // degrees, added to base rotation Y
-        private float _mouseLookPitch; // degrees, applied as X rotation offset
+        [SerializeField]
+        [Tooltip("Invert vertical look (true = pushing mouse up looks down).")]
+        private bool invertY = false;
 
-        // ------------------------------------------------------------------
-        //  Unity lifecycle
-        // ------------------------------------------------------------------
+        [Header("Cursor")]
+        [SerializeField]
+        [Tooltip("Lock cursor to screen center and hide it on start.")]
+        private bool lockCursor = true;
 
-        private void Awake()
-        {
-            _camera = GetComponent<Camera>();
-            // V0-EXCEPTION: GameLoopController found in Start() not Awake()
-            // because GridBuilder creates it during its Awake() and execution order
-            // is non-deterministic.
-        }
+        // Accumulated vertical rotation for clamping.
+        private float verticalRotation;
 
         private void Start()
         {
-            _gameLoopController = FindObjectOfType<DungeonVR.Gameplay.Components.GameLoopController>();
-
-            if (_gameLoopController == null)
+            if (lockCursor)
             {
-                Debug.LogError("[PlayerCameraController] No GameLoopController found in scene. Camera will not follow champion.", this);
-                return;
+                Cursor.lockState = CursorLockMode.Locked;
+                Cursor.visible = false;
             }
 
-            // Snap to initial champion position immediately
-            if (_gameLoopController.GameState?.Champion != null)
+            // Initialise vertical rotation from the camera's current local X rotation.
+            verticalRotation = transform.localEulerAngles.x;
+
+            // eulerAngles.x is in the range [0, 360), but we work in [-180, 180].
+            if (verticalRotation > 180f)
             {
-                var champion = _gameLoopController.GameState.Champion;
-                _targetBaseRotation = FacingIndexToRotation(champion.FacingIndex);
-                transform.position = champion.WorldPosition + Vector3.up * GameConstants.EYE_HEIGHT;
-                transform.rotation = _targetBaseRotation;
+                verticalRotation -= 360f;
+            }
+
+            // Warn if the camera is a child of a rotating parent (body rotation on the parent,
+            // camera only handles vertical look in that setup).
+            if (transform.parent != null)
+            {
+                Debug.Log(
+                    $"{nameof(PlayerCameraController)} on '{transform.name}' has a parent " +
+                    $"({transform.parent.name}). Ensure horizontal rotation is applied on the " +
+                    $"parent GameObject, not on this camera.",
+                    this
+                );
             }
         }
 
         private void Update()
         {
-            if (_gameLoopController?.GameState?.Champion == null)
+            if (Cursor.lockState != CursorLockMode.Locked)
+            {
+                // When the cursor is unlocked (e.g. menu is open), do not rotate.
                 return;
-
-            ChampionState champion = _gameLoopController.GameState.Champion;
-
-            // --- 1. Update base rotation from champion facing ---
-            _targetBaseRotation = FacingIndexToRotation(champion.FacingIndex);
-
-            // --- 2. Mouse look (right-mouse button) ---
-            HandleMouseLook();
-
-            // --- 3. Compute target transform ---
-            Vector3 targetPosition = champion.WorldPosition + Vector3.up * GameConstants.EYE_HEIGHT;
-
-            // Compose: champion base rotation first, then mouse-look yaw (horizontal),
-            // then mouse-look pitch (vertical / local X).
-            Quaternion targetRotation = _targetBaseRotation
-                                        * Quaternion.Euler(0f, _mouseLookYaw, 0f)
-                                        * Quaternion.Euler(_mouseLookPitch, 0f, 0f);
-
-            // --- 4. Smooth interpolation ---
-            transform.position = Vector3.Lerp(transform.position, targetPosition, _positionLerpSpeed * Time.deltaTime);
-            transform.rotation = Quaternion.Slerp(transform.rotation, targetRotation, _rotationLerpSpeed * Time.deltaTime);
-        }
-
-        // ------------------------------------------------------------------
-        //  Mouse look
-        // ------------------------------------------------------------------
-
-        /// <summary>
-        /// Accumulates mouse deltas while the right mouse button is held,
-        /// clamped vertically to prevent over-rotation / flipping.
-        /// </summary>
-        private void HandleMouseLook()
-        {
-            if (Input.GetMouseButton(1)) // Right mouse button
-            {
-                float deltaX = Input.GetAxis("Mouse X") * _mouseSensitivity;
-                float deltaY = Input.GetAxis("Mouse Y") * _mouseSensitivity;
-
-                _mouseLookYaw   += deltaX;
-                _mouseLookPitch -= deltaY; // Invert Y for natural look
-                _mouseLookPitch  = Mathf.Clamp(_mouseLookPitch, -_verticalClamp, _verticalClamp);
             }
+
+            // Read mouse deltas for this frame.
+            float mouseX = Input.GetAxis(mouseXAxis) * mouseSensitivityX;
+            float mouseY = Input.GetAxis(mouseYAxis) * mouseSensitivityY;
+
+            if (invertY)
+            {
+                mouseY = -mouseY;
+            }
+
+            // --- Vertical rotation (local X-axis) ---
+            verticalRotation -= mouseY;
+            verticalRotation = Mathf.Clamp(verticalRotation, -maxLookDown, maxLookUp);
+
+            transform.localEulerAngles = new Vector3(verticalRotation, transform.localEulerAngles.y, 0f);
+
+            // --- Horizontal rotation (world Y-axis) ---
+            // Rotate the entire GameObject around the world up vector.
+            transform.Rotate(Vector3.up, mouseX, Space.World);
         }
 
-        // ------------------------------------------------------------------
-        //  Helpers
-        // ------------------------------------------------------------------
-
         /// <summary>
-        /// Maps FacingIndex to a world-space rotation.
-        ///   0 (North) → (0,   0, 0)
-        ///   1 (East)  → (0,  90, 0)
-        ///   2 (South) → (0, 180, 0)
-        ///   3 (West)  → (0, 270, 0)
+        /// Programmatically release or re-lock the cursor.
+        /// Useful when opening in-game menus that require free cursor movement.
         /// </summary>
-        private static Quaternion FacingIndexToRotation(int facingIndex)
+        public void SetCursorLock(bool locked)
         {
-            float yAngle = facingIndex switch
-            {
-                0 => 0f,
-                1 => 90f,
-                2 => 180f,
-                3 => 270f,
-                _ => 0f
-            };
-
-            return Quaternion.Euler(0f, yAngle, 0f);
+            Cursor.lockState = locked ? CursorLockMode.Locked : CursorLockMode.None;
+            Cursor.visible = !locked;
         }
     }
 }

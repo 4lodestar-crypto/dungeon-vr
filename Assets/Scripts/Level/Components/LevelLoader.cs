@@ -43,6 +43,16 @@ namespace DungeonVR.Level.Components
         public GridService GridService => _gridService;
 
         /// <summary>
+        /// The assigned TilePalette for looking up tile prefabs.
+        /// </summary>
+        public TilePalette Palette => _palette;
+
+        /// <summary>
+        /// The root transform under which instantiated tiles are placed.
+        /// </summary>
+        public Transform TileRoot => _tileRoot;
+
+        /// <summary>
         /// Loads a level from a TextAsset (JSON format, schema version 1).
         /// Deserializes, validates, instantiates tiles, and fires LevelLoaded.
         /// </summary>

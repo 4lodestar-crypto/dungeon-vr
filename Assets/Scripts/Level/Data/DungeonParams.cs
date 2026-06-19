@@ -116,6 +116,7 @@ namespace DungeonVR.Level.Data
             _maxRoomCount = Mathf.Max(_minRoomCount, _maxRoomCount);
             _minRoomSize = Mathf.Max(3, _minRoomSize);
             _maxRoomSize = Mathf.Max(_minRoomSize, _maxRoomSize);
+            _maxRoomSize = Mathf.Min(_maxRoomSize, _width / 2, _depth / 2);
             _corridorWidth = Mathf.Max(1, _corridorWidth);
             return this;
         }

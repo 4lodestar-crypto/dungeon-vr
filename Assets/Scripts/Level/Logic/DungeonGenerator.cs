@@ -175,10 +175,11 @@ namespace DungeonVR.Level.Logic
             if (!loaded)
             {
                 error = "LevelLoader.LoadFromData failed.";
-                Object.DestroyImmediate(loaderObj);
+                UnityEngine.Object.DestroyImmediate(loaderObj);
                 return false;
             }
 
+            UnityEngine.Object.DestroyImmediate(loaderObj);
             return true;
         }
 
@@ -265,6 +266,19 @@ namespace DungeonVR.Level.Logic
             {
                 int rw = rng.Next(parameters.MinRoomSize, parameters.MaxRoomSize + 1);
                 int rh = rng.Next(parameters.MinRoomSize, parameters.MaxRoomSize + 1);
+
+                // Clamp room dimensions so rng.Next(2, width - rw - 2) and
+                // rng.Next(2, depth - rh - 2) have valid ranges (min < max).
+                // rw must be <= width - 5 so that width - rw - 2 > 2.
+                // Similarly rh must be <= depth - 5.
+                int maxRw = width - 5;
+                int maxRh = depth - 5;
+                if (rw > maxRw) rw = maxRw;
+                if (rh > maxRh) rh = maxRh;
+
+                // If clamping made the room smaller than the minimum, skip
+                if (rw < parameters.MinRoomSize || rh < parameters.MinRoomSize)
+                    continue;
 
                 // Position rooms with margin from perimeter walls (leave 1-tile border)
                 int rx = rng.Next(2, width - rw - 2);
@@ -500,7 +514,12 @@ namespace DungeonVR.Level.Logic
                     // Don't overwrite special tiles
                     if (tiles[i].Type != TileType.Spawn && tiles[i].Type != TileType.Stairs)
                     {
-                        tiles[i] = new TileData(tiles[i].X, tiles[i].Z, TileType.Floor, WallFace.None, tiles[i].FloorHeight);
+                        var oldTile = tiles[i];
+                        tiles[i] = new TileData(oldTile.X, oldTile.Z, TileType.Floor, WallFace.None, oldTile.FloorHeight)
+                        {
+                            Tags = oldTile.Tags,
+                            Metadata = oldTile.Metadata
+                        };
                     }
                 }
             }
