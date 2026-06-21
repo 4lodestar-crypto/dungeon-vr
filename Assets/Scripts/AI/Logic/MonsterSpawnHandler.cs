@@ -22,6 +22,7 @@ namespace DungeonVR.AI.Logic
     {
         private readonly Dictionary<string, MonsterDefinition> _definitionCatalog;
         private readonly MonsterAIDispatcher _dispatcher;
+        private readonly IGridPathfinder _pathfinder;
         private readonly System.Random _rng;
         private int _nextEntityId;
 
@@ -30,14 +31,17 @@ namespace DungeonVR.AI.Logic
         /// </summary>
         /// <param name="definitionCatalog">Map of definition ID → MonsterDefinition asset.</param>
         /// <param name="dispatcher">AI dispatcher to register spawned monsters with.</param>
+        /// <param name="pathfinder">Grid pathfinder for monster AI behaviors.</param>
         /// <param name="seed">Deterministic seed for spawn RNG (entity ID generation).</param>
         public MonsterSpawnHandler(
             Dictionary<string, MonsterDefinition> definitionCatalog,
             MonsterAIDispatcher dispatcher,
+            IGridPathfinder pathfinder,
             int seed)
         {
             _definitionCatalog = definitionCatalog;
             _dispatcher = dispatcher;
+            _pathfinder = pathfinder;
             _rng = new System.Random(seed);
             // Start entity IDs at 1000 to avoid collision with champion (entity 0).
             _nextEntityId = 1000;
@@ -89,7 +93,7 @@ namespace DungeonVR.AI.Logic
             {
                 case MonsterArchetype.Aggressive:
                     // Screamer is the Aggressive archetype monster.
-                    return new ScreamerBehavior(definition, entityId, position, seed);
+                    return new ScreamerBehavior(definition, _pathfinder, entityId, position, seed);
 
                 case MonsterArchetype.Ambush:
                 case MonsterArchetype.Passive:
@@ -97,7 +101,7 @@ namespace DungeonVR.AI.Logic
                 default:
                     // Future monster types — not implemented in V0.
                     Debug.LogWarning($"[MonsterSpawnHandler] Archetype {definition.archetype} not implemented. Falling back to ScreamerBehavior.");
-                    return new ScreamerBehavior(definition, entityId, position, seed);
+                    return new ScreamerBehavior(definition, _pathfinder, entityId, position, seed);
             }
         }
 

@@ -129,15 +129,7 @@ namespace DungeonVR.AI.Interfaces
     }
 
     // ──────────────────────────────────────────────────────────
-    // Contract stubs that will be fully defined in V1+
+    // IGridQueryService lives at DungeonVR.Shared.Interfaces.IGridQueryService.
+    // The V0 stub that lived here has been removed to avoid ambiguity.
     // ──────────────────────────────────────────────────────────
-
-    /// <summary>
-    /// V1+ — The only interface allowed for querying tile-grid data during AI evaluation.
-    /// V0 placeholder — use DungeonVR.Shared.Interfaces.IGridQueryService instead.
-    /// </summary>
-    public interface IGridQueryService
-    {
-        // V0 stub — use DungeonVR.Shared.Interfaces.IGridQueryService in V1
-    }
 }
