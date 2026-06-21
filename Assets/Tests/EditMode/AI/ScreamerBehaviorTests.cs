@@ -5,6 +5,7 @@ using DungeonVR.Shared;
 using DungeonVR.Shared.Data;
 using NUnit.Framework;
 using System.Collections.Generic;
+using UnityEngine;
 
 namespace DungeonVR.Tests.EditMode.AI
 {
@@ -23,22 +24,20 @@ namespace DungeonVR.Tests.EditMode.AI
         [SetUp]
         public void SetUp()
         {
-            _definition = new MonsterDefinition
-            {
-                monsterName = "Screamer",
-                archetype = MonsterArchetype.Ambush,
-                maxHP = 8,
-                moveSpeedTilesPerTick = 0.5f,
-                detectionRangeTiles = 4,
-                damagePerHit = 3,
-                attackCooldownTicks = 6,
-                initialState = MonsterStateId.Idle,
-                spawnCueKey = "screamer_spawn",
-                detectionCueKey = "screamer_scream",
-                attackCueKey = "screamer_attack",
-                hurtCueKey = "screamer_hurt",
-                deathCueKey = "screamer_death"
-            };
+            _definition = ScriptableObject.CreateInstance<MonsterDefinition>();
+            _definition.monsterName = "Screamer";
+            _definition.archetype = MonsterArchetype.Ambush;
+            _definition.maxHP = 8;
+            _definition.moveSpeedTilesPerTick = 0.5f;
+            _definition.detectionRangeTiles = 4;
+            _definition.damagePerHit = 3;
+            _definition.attackCooldownTicks = 6;
+            _definition.initialState = MonsterStateId.Idle;
+            _definition.spawnCueKey = "screamer_spawn";
+            _definition.detectionCueKey = "screamer_scream";
+            _definition.attackCueKey = "screamer_attack";
+            _definition.hurtCueKey = "screamer_hurt";
+            _definition.deathCueKey = "screamer_death";
 
             _pathfinder = new StubPathfinder();
             _nextEntityId = 1001;
