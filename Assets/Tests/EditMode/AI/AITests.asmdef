@@ -1,12 +1,10 @@
 {
-    "name": "DungeonVR.Tests",
+    "name": "DungeonVR.AI.Tests",
     "rootNamespace": "",
     "references": [
         "DungeonVR.Shared",
-        "DungeonVR.Gameplay",
-        "DungeonVR.Server",
-        "DungeonVR.Level",
-        "DungeonVR.AI"
+        "DungeonVR.AI",
+        "DungeonVR.Tests"
     ],
     "includePlatforms": [
         "Editor"
