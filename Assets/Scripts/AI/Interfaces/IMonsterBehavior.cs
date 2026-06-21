@@ -1,5 +1,6 @@
 using DungeonVR.Shared;
 using DungeonVR.Shared.Data;
+using DungeonVR.Shared.Interfaces;
 
 namespace DungeonVR.AI.Interfaces
 {

@@ -27,5 +27,9 @@
     "com.unity.modules.vr": "1.0.0",
     "com.unity.modules.xr": "1.0.0"
   },
-  "scopedRegistries": []
+  "scopedRegistries": [],
+  "testables": [
+    "DungeonVR.Tests",
+    "DungeonVR.AI.Tests"
+  ]
 }
